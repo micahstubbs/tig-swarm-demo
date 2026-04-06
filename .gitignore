@@ -1,0 +1,12 @@
+node_modules/
+dist/
+target/
+.venv/
+__pycache__/
+*.pyc
+*.db
+.railway/
+fly.toml
+Procfile
+runtime.txt
+Dockerfile.bak
