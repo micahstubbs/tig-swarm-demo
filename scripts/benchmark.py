@@ -11,6 +11,14 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
 DATASET = sys.argv[1] if len(sys.argv) > 1 else str(ROOT_DIR / "datasets/vehicle_routing/demo")
+INSTANCES = [
+    "n_nodes=50/0.txt",
+    "n_nodes=75/0.txt",
+    "n_nodes=100/0.txt",
+    "n_nodes=100/1.txt",
+    "n_nodes=100/2.txt",
+]
+SOLVER_TIMEOUT = 5
 
 def build():
     subprocess.run(
@@ -90,56 +98,49 @@ def main():
     all_route_data = {}
 
     dataset_path = Path(DATASET)
-    for track_dir in sorted(dataset_path.glob("n_nodes=*")):
-        for inst in sorted(track_dir.glob("*.txt")):
-            if ".solution" in inst.name:
+    for instance_name in INSTANCES:
+        inst = dataset_path / instance_name
+
+        with tempfile.NamedTemporaryFile(suffix=".solution", delete=False) as tmp:
+            sol_path = tmp.name
+
+        try:
+            result = subprocess.run(
+                [solver, "vehicle_routing", str(inst), sol_path],
+                capture_output=True, text=True, timeout=SOLVER_TIMEOUT,
+            )
+            if result.returncode != 0 or not os.path.exists(sol_path):
+                errors.append(f"{instance_name}: solver failed")
                 continue
-            instance_name = f"{track_dir.name}/{inst.name}"
 
-            with tempfile.NamedTemporaryFile(suffix=".solution", delete=False) as tmp:
-                sol_path = tmp.name
+            solved += 1
+            routes = parse_solution_routes(sol_path)
+            total_vehicles += len(routes)
 
-            try:
-                # Run solver
-                result = subprocess.run(
-                    [solver, "vehicle_routing", str(inst), sol_path],
-                    capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode != 0 or not os.path.exists(sol_path):
-                    errors.append(f"{instance_name}: solver failed")
-                    continue
+            eval_result = subprocess.run(
+                [evaluator, "vehicle_routing", str(inst), sol_path],
+                capture_output=True, text=True, timeout=SOLVER_TIMEOUT,
+            )
+            output = (eval_result.stdout + eval_result.stderr).strip()
 
-                solved += 1
-                routes = parse_solution_routes(sol_path)
-                total_vehicles += len(routes)
+            if "Error" in output:
+                infeasible_count += 1
+                errors.append(f"{instance_name}: {output.split(chr(10))[0]}")
+            else:
+                feasible_count += 1
+                nums = re.findall(r"\d+", output)
+                if nums:
+                    dist = int(nums[0])
+                    total_dist += dist
+                    rd = make_route_data(str(inst), sol_path)
+                    if rd:
+                        all_route_data[instance_name] = rd
 
-                # Evaluate
-                eval_result = subprocess.run(
-                    [evaluator, "vehicle_routing", str(inst), sol_path],
-                    capture_output=True, text=True, timeout=30,
-                )
-                output = (eval_result.stdout + eval_result.stderr).strip()
-
-                if "Error" in output:
-                    infeasible_count += 1
-                    errors.append(f"{instance_name}: {output.split(chr(10))[0]}")
-                else:
-                    feasible_count += 1
-                    # Extract distance from evaluator output
-                    nums = re.findall(r"\d+", output)
-                    if nums:
-                        dist = int(nums[0])
-                        total_dist += dist
-                        # Keep route data for all feasible instances
-                        rd = make_route_data(str(inst), sol_path)
-                        if rd:
-                            all_route_data[instance_name] = rd
-
-            except subprocess.TimeoutExpired:
-                errors.append(f"{instance_name}: timeout")
-            finally:
-                if os.path.exists(sol_path):
-                    os.unlink(sol_path)
+        except subprocess.TimeoutExpired:
+            errors.append(f"{instance_name}: timeout")
+        finally:
+            if os.path.exists(sol_path):
+                os.unlink(sol_path)
 
     all_feasible = infeasible_count == 0 and feasible_count > 0
     # Score: total distance if all feasible, otherwise huge penalty per infeasible instance

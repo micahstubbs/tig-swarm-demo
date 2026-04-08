@@ -100,16 +100,16 @@ Key types:
 python3 scripts/benchmark.py
 ```
 
-This builds, runs the solver on all 15 demo instances, evaluates feasibility, and outputs JSON.
+This builds, runs the solver on 5 benchmark instances (50, 75, and 100 nodes), evaluates feasibility, and outputs JSON.
 
-**Time limit: 10 seconds per instance.** Your solver must produce a solution within 10 seconds or that instance counts as infeasible. You can call `save_solution()` multiple times — the best solution is kept. Write anytime algorithms that improve iteratively.
+**Time limit: 5 seconds per instance.** Your solver must produce a solution within 5 seconds or that instance counts as infeasible. You can call `save_solution()` multiple times — the best solution is kept. Write anytime algorithms that improve iteratively.
 
 Key output fields:
 - `score` — **lower is better**. Computed as: `(sum of distances for feasible instances) + (number of infeasible instances × 1,000,000)`. Infeasible instances get a massive penalty, so prioritize feasibility first, then optimize distance.
 - `feasible` — whether ALL instances passed constraint checks (fleet size, capacity, time windows)
 - `route_data` — vehicle routes for dashboard visualization (included automatically)
 
-A perfect score means all 15 instances feasible with minimal total distance (~150,000-200,000 range). A score above 1,000,000 means at least one instance is infeasible.
+A perfect score means all 5 instances feasible with minimal total distance. A score above 1,000,000 means at least one instance is infeasible.
 
 ### Step 5: Publish Results
 
