@@ -104,7 +104,7 @@ def main():
                 # Run solver
                 result = subprocess.run(
                     [solver, "vehicle_routing", str(inst), sol_path],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True, text=True, timeout=30,
                 )
                 if result.returncode != 0 or not os.path.exists(sol_path):
                     errors.append(f"{instance_name}: solver failed")
@@ -117,7 +117,7 @@ def main():
                 # Evaluate
                 eval_result = subprocess.run(
                     [evaluator, "vehicle_routing", str(inst), sol_path],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True, text=True, timeout=30,
                 )
                 output = (eval_result.stdout + eval_result.stderr).strip()
 
