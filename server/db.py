@@ -95,6 +95,12 @@ DEFAULT_CONFIG = {
 async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(SCHEMA)
+        # Migrate: rename algorithm_diff -> algorithm_code if old column exists
+        try:
+            await db.execute("ALTER TABLE experiments RENAME COLUMN algorithm_diff TO algorithm_code")
+            await db.commit()
+        except Exception:
+            pass  # Column already renamed or doesn't exist
         for key, value in DEFAULT_CONFIG.items():
             await db.execute(
                 "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)",
