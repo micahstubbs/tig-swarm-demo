@@ -50,7 +50,17 @@ def get_baseline(config: dict) -> float:
     return float(config.get("baseline_score", str(DEFAULT_BASELINE)))
 
 
-def get_num_instances(config: dict) -> int:
+def get_num_instances(config: dict, route_data=None) -> int:
+    # Authoritative count: the actual keys in the current best experiment's
+    # route_data. Config is only the fallback for the pre-first-experiment
+    # moment, so it can't drift out of sync with what benchmark.py is running.
+    if route_data:
+        try:
+            rd = json.loads(route_data) if isinstance(route_data, str) else route_data
+            if rd:
+                return len(rd)
+        except Exception:
+            pass
     try:
         return len(json.loads(config.get("benchmark_instances", "[]"))) or 1
     except Exception:
@@ -149,7 +159,7 @@ async def periodic_stats():
                 "hypotheses_count": total_hyp,
                 "best_score": best["score"] if best else None,
                 "baseline_score": baseline,
-                "num_instances": get_num_instances(config),
+                "num_instances": get_num_instances(config, best["route_data"] if best else None),
                 "improvement_pct": improvement_pct(baseline, best["score"]) if best else 0,
                 "timestamp": now(),
             })
@@ -248,7 +258,8 @@ async def get_state():
         """)
         succeeded_hypotheses = [dict(row) for row in await cursor.fetchall()]
 
-        leaderboard = await db.compute_leaderboard(conn, baseline, get_num_instances(config))
+        num_instances = get_num_instances(config, best["route_data"] if best else None)
+        leaderboard = await db.compute_leaderboard(conn, baseline, num_instances)
 
     return {
         "baseline_score": baseline,
@@ -256,7 +267,7 @@ async def get_state():
         "best_algorithm_code": best["algorithm_code"] if best else SEED_ALGORITHM_CODE,
         "best_experiment_id": best["id"] if best else None,
         "best_route_data": json.loads(best["route_data"]) if best and best["route_data"] else None,
-        "num_instances": get_num_instances(config),
+        "num_instances": num_instances,
         "active_agents": active,
         "total_experiments": total_exp,
         "recent_experiments": [
@@ -435,7 +446,13 @@ async def create_experiment(req: ExperimentCreate):
             )
 
         await conn.commit()
-        leaderboard = await db.compute_leaderboard(conn, baseline, get_num_instances(config))
+        # Prefer this experiment's own route_data; if it wasn't provided,
+        # fall back to the previous global best's.
+        num_instances = get_num_instances(
+            config,
+            req.route_data or (prev_best["route_data"] if prev_best else None),
+        )
+        leaderboard = await db.compute_leaderboard(conn, baseline, num_instances)
         rank = next((e["rank"] for e in leaderboard if e["agent_id"] == req.agent_id), 0)
 
     imp = improvement_pct(baseline, req.score)
@@ -458,7 +475,7 @@ async def create_experiment(req: ExperimentCreate):
         "feasible": req.feasible,
         "improvement_pct": imp,
         "delta_vs_best_pct": delta_vs_best_pct,
-        "num_instances": get_num_instances(config),
+        "num_instances": num_instances,
         "is_new_best": is_new_best,
         "hypothesis_id": req.hypothesis_id,
         "notes": req.notes,
@@ -474,7 +491,7 @@ async def create_experiment(req: ExperimentCreate):
             "score": req.score,
             "improvement_pct": imp,
             "incremental_improvement_pct": incremental_pct,
-            "num_instances": get_num_instances(config),
+            "num_instances": num_instances,
             "route_data": req.route_data,
             "timestamp": timestamp,
         })
@@ -501,7 +518,9 @@ async def get_leaderboard():
     config = await get_config_cached()
     baseline = get_baseline(config)
     async with db.connect() as conn:
-        leaderboard = await db.compute_leaderboard(conn, baseline, get_num_instances(config))
+        best = await db.get_global_best(conn)
+        num_instances = get_num_instances(config, best["route_data"] if best else None)
+        leaderboard = await db.compute_leaderboard(conn, baseline, num_instances)
     return {"updated_at": now(), "baseline_score": baseline, "entries": leaderboard}
 
 

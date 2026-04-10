@@ -219,7 +219,7 @@ export class MockDataGenerator {
           agent_name: a.name,
           runs: a.experiments,
           improvements: a.improvements,
-          avg_score: avg,
+          best_score: avg,
         }));
 
       this.emit({

@@ -23,8 +23,9 @@ export interface LeaderboardEntry {
   agent_name: string;
   runs: number;
   improvements: number;
-  // null when the agent has no runs yet
-  avg_score: number | null;
+  // Best per-instance score the agent has achieved across feasible runs.
+  // null when the agent has no feasible runs yet.
+  best_score: number | null;
 }
 
 // WebSocket message types

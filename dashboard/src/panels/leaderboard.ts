@@ -1,13 +1,13 @@
 import type { Panel, WSMessage, LeaderboardEntry } from "../types";
 import { getAgentColor } from "../lib/colors";
 
-type SortKey = "avg_score" | "runs" | "improvements";
+type SortKey = "best_score" | "runs" | "improvements";
 type SortDir = "asc" | "desc";
 
 // Default direction when a column is first clicked: lower-is-better for score,
 // higher-is-better for activity counts.
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
-  avg_score: "asc",
+  best_score: "asc",
   runs: "desc",
   improvements: "desc",
 };
@@ -15,7 +15,7 @@ const DEFAULT_DIR: Record<SortKey, SortDir> = {
 export class LeaderboardPanel implements Panel {
   private list!: HTMLElement;
   private currentEntries: LeaderboardEntry[] = [];
-  private sortKey: SortKey = "avg_score";
+  private sortKey: SortKey = "best_score";
   private sortDir: SortDir = "asc";
 
   init(container: HTMLElement) {
@@ -27,7 +27,7 @@ export class LeaderboardPanel implements Panel {
           <span class="lb-name">Agent</span>
           <button type="button" class="lb-runs lb-sortable" data-sort="runs">Runs<span class="lb-arrow"></span></button>
           <button type="button" class="lb-imp lb-sortable" data-sort="improvements">Imp.<span class="lb-arrow"></span></button>
-          <button type="button" class="lb-score lb-sortable" data-sort="avg_score">Score<span class="lb-arrow"></span></button>
+          <button type="button" class="lb-score lb-sortable" data-sort="best_score">Best score<span class="lb-arrow"></span></button>
         </div>
         <div class="leaderboard-list" id="leaderboard-list"></div>
       </div>
@@ -132,7 +132,7 @@ export class LeaderboardPanel implements Panel {
         ((goodDir === "asc" && (sortVal as number) < prev) ||
          (goodDir === "desc" && (sortVal as number) > prev));
 
-      const scoreText = entry.avg_score === null ? "—" : entry.avg_score.toFixed(1);
+      const scoreText = entry.best_score === null ? "—" : entry.best_score.toFixed(1);
 
       row.innerHTML = `
         <span class="lb-rank ${rankClass}">${rank}</span>

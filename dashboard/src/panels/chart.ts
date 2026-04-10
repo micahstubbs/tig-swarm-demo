@@ -82,9 +82,12 @@ export class ChartPanel implements Panel {
       if (this.startTime === 0) this.startTime = msgTime;
       const time = msgTime - this.startTime;
 
+      // Plot per-instance average score so the chart matches the routes panel.
+      const avgScore = msg.score / Math.max(1, msg.num_instances);
+
       // Only track the running best
       const currentBest = this.data.length > 0 ? this.data[this.data.length - 1].score : this.baseline;
-      const newBest = Math.min(currentBest, msg.score);
+      const newBest = Math.min(currentBest, avgScore);
       if (newBest < currentBest || this.data.length === 0) {
         this.data.push({
           time: Math.max(0, time),
@@ -114,12 +117,11 @@ export class ChartPanel implements Panel {
       .range([0, w]);
 
     const scoreMin = d3.min(this.data, (d) => d.score)! * 0.98;
-    // Soft cap at 8k: normally the curve tops out at 8000 regardless of the
-    // baseline, but if a data point exceeds that (e.g. an unusually poor
-    // feasible run), the scale expands to fit it so the curve never escapes
-    // the plot region.
+    // Soft cap at 5500: the curve plots per-instance average scores (roughly
+    // 3500-5000 for feasible runs), but if a data point exceeds that the
+    // scale expands to fit it so the curve never escapes the plot region.
     const dataMax = d3.max(this.data, (d) => d.score)!;
-    const scoreMax = Math.max(8000, dataMax);
+    const scoreMax = Math.max(5500, dataMax);
 
     // Standard Y axis: high values at the top, low at the bottom. The curve
     // descends as the score improves.

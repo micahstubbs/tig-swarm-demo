@@ -156,11 +156,10 @@ async def compute_leaderboard(
 ) -> list[dict]:
     # runs         = total experiments published by the agent (any feasibility)
     # improvements = times this agent set a new global best (from best_history)
-    # avg_score    = mean per-instance score across all the agent's runs.
-    #                Each run's score is sum-over-instances of (distance if feasible
-    #                else 1M penalty), so dividing by num_instances gives the mean
-    #                per-instance score for that run; AVG then means across runs.
-    #                NULL if the agent has no runs at all.
+    # best_score   = best per-instance score this agent has ever achieved.
+    #                Only feasible runs count — infeasible ones are ignored so
+    #                the value represents a real achievable score rather than
+    #                a penalty figure. NULL if the agent has no feasible runs.
     divisor = max(num_instances, 1)
     cursor = await conn.execute(
         f"""
@@ -168,12 +167,12 @@ async def compute_leaderboard(
             a.id   as agent_id,
             a.name as agent_name,
             COUNT(e.id) as runs,
-            AVG(e.score) / {divisor} as avg_score,
+            MIN(CASE WHEN e.feasible = 1 THEN e.score END) / {divisor} as best_score,
             (SELECT COUNT(*) FROM best_history bh WHERE bh.agent_name = a.name) as improvements
         FROM agents a
         LEFT JOIN experiments e ON e.agent_id = a.id
         GROUP BY a.id
-        ORDER BY avg_score IS NULL, avg_score ASC, a.name ASC
+        ORDER BY best_score IS NULL, best_score ASC, a.name ASC
         """
     )
     rows = await cursor.fetchall()
@@ -184,7 +183,7 @@ async def compute_leaderboard(
             "agent_name": row["agent_name"],
             "runs": row["runs"],
             "improvements": row["improvements"],
-            "avg_score": row["avg_score"],
+            "best_score": row["best_score"],
         }
         for i, row in enumerate(rows)
     ]
