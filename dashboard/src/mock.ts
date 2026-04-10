@@ -156,6 +156,12 @@ export class MockDataGenerator {
       }
       agent.scoreSum += score;
 
+      const deltaVsBest =
+        prevBestForBroadcast > 0 && prevBestForBroadcast < Infinity
+          ? Number(
+              (((prevBestForBroadcast - score) / prevBestForBroadcast) * 100).toFixed(2),
+            )
+          : null;
       this.emit({
         type: "experiment_published",
         experiment_id: `exp-${this.totalExperiments}`,
@@ -166,6 +172,8 @@ export class MockDataGenerator {
         improvement_pct: Number(
           (((this.baseline - score) / this.baseline) * 100).toFixed(2),
         ),
+        delta_vs_best_pct: deltaVsBest,
+        num_instances: 8,
         is_new_best: isNewBest,
         hypothesis_id: `hyp-${Math.floor(Math.random() * Math.max(1, this.totalHypotheses))}`,
         notes: improvement ? "Improved routing efficiency" : "Score regressed",

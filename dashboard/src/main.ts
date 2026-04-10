@@ -138,6 +138,11 @@ async function loadInitialState(apiUrl: string) {
         score: exp.score,
         feasible: exp.feasible !== false,
         improvement_pct: exp.improvement_pct || 0,
+        // We don't know the historical prev-best from /api/state, so leave
+        // the delta null for the replayed feed items. The feed just hides
+        // the % when null.
+        delta_vs_best_pct: null,
+        num_instances: state.num_instances || 1,
         is_new_best: false,
         hypothesis_id: null,
         notes: exp.notes || "",

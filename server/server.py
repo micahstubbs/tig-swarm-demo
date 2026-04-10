@@ -394,12 +394,17 @@ async def create_experiment(req: ExperimentCreate):
 
         prev_best = await db.get_global_best(conn)
         is_new_best = req.feasible and (prev_best is None or req.score < prev_best["score"])
-        # % improvement of this best over the previous best (None if first ever)
-        incremental_pct: float | None = None
-        if is_new_best and prev_best is not None and prev_best["score"] > 0:
-            incremental_pct = round(
+        # % difference of this experiment vs the previous global best. Positive
+        # means this run beat the previous best; negative means it's worse.
+        # None when there is no previous best to compare against.
+        delta_vs_best_pct: float | None = None
+        if prev_best is not None and prev_best["score"] > 0:
+            delta_vs_best_pct = round(
                 ((prev_best["score"] - req.score) / prev_best["score"]) * 100, 2
             )
+        # For new_global_best broadcasts we only care about the positive case;
+        # reuse the same number.
+        incremental_pct = delta_vs_best_pct if is_new_best else None
 
         if is_new_best:
             await conn.execute(
@@ -438,6 +443,8 @@ async def create_experiment(req: ExperimentCreate):
         "score": req.score,
         "feasible": req.feasible,
         "improvement_pct": imp,
+        "delta_vs_best_pct": delta_vs_best_pct,
+        "num_instances": get_num_instances(config),
         "is_new_best": is_new_best,
         "hypothesis_id": req.hypothesis_id,
         "notes": req.notes,

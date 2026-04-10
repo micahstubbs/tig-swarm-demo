@@ -39,18 +39,27 @@ export class FeedPanel implements Panel {
         text = `<b>${msg.agent_name}</b> proposed: "${msg.title}"`;
         eventType = "hypothesis_proposed";
         break;
-      case "experiment_published":
+      case "experiment_published": {
+        // Score shown in the feed is the avg per-instance score, so it matches
+        // the leaderboard / routes panel. The % delta is vs the previous
+        // global best: positive when this run beat it (improved), negative
+        // when it was worse.
+        const divisor = Math.max(msg.num_instances || 1, 1);
+        const avgScore = msg.score / divisor;
+        const delta = msg.delta_vs_best_pct;
+        const deltaStr =
+          delta == null
+            ? ""
+            : ` (${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%)`;
         if (msg.is_new_best) {
-          text = `<b>${msg.agent_name}</b> found new best! Score: ${msg.score.toFixed(1)} (${msg.improvement_pct > 0 ? "+" : ""}${msg.improvement_pct.toFixed(1)}%)`;
+          text = `<b>${msg.agent_name}</b> improved &mdash; ${avgScore.toFixed(1)}${deltaStr}`;
           eventType = "new_global_best";
-        } else if (msg.feasible && msg.improvement_pct > 0) {
-          text = `<b>${msg.agent_name}</b> improved: ${msg.score.toFixed(1)} (${msg.improvement_pct > 0 ? "+" : ""}${msg.improvement_pct.toFixed(1)}%)`;
-          eventType = "experiment_success";
         } else {
-          text = `<b>${msg.agent_name}</b> tested: ${msg.score.toFixed(1)}`;
+          text = `<b>${msg.agent_name}</b> no improvement &mdash; ${avgScore.toFixed(1)}${deltaStr}`;
           eventType = "experiment_fail";
         }
         break;
+      }
       case "admin_broadcast":
         text = `<b>ADMIN</b>: ${msg.message}`;
         eventType = "new_global_best";
