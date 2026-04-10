@@ -13,6 +13,8 @@ Steps:
 import json
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -23,15 +25,32 @@ ALGO = ROOT / "src/vehicle_routing/algorithm/mod.rs"
 ADMIN_KEY = "ads-2026"
 
 
-def post(path: str, payload: dict) -> dict:
+def post(path: str, payload: dict, retries: int = 4) -> dict:
+    # The benchmark step blocks for ~30s, which is exactly the window in
+    # which a Railway redeploy (triggered by a fresh push) can flip the
+    # upstream and cause a transient 502/503. Retry a few times with
+    # backoff so a rolling deploy doesn't kill the whole bootstrap run.
     req = urllib.request.Request(
         f"{SERVER}{path}",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.load(resp)
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code in (502, 503, 504) and attempt < retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+        except urllib.error.URLError:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+    raise RuntimeError("unreachable")
 
 
 def log(msg: str) -> None:
