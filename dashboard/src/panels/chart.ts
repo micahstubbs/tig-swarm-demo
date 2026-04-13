@@ -113,9 +113,9 @@ export class ChartPanel implements Panel {
       .range([0, w]);
 
     const scoreMin = d3.min(this.data, (d) => d.score)! * 0.98;
-    // Y-axis top is the seed (first) score + 300 for breathing room.
+    // Y-axis top is the seed (first) score + 100 for breathing room.
     const seedScore = this.data[0].score;
-    const scoreMax = seedScore + 300;
+    const scoreMax = seedScore + 100;
 
     // Standard Y axis: high values at the top, low at the bottom. The curve
     // descends as the score improves.
