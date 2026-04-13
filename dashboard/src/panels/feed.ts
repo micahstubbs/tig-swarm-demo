@@ -2,7 +2,7 @@ import type { Panel, WSMessage } from "../types";
 import { formatTime } from "../lib/animate";
 import { getAgentColor } from "../lib/colors";
 
-const MAX_ITEMS = 15;
+const MAX_ITEMS = 200;
 
 const EVENT_CONFIG: Record<string, { dot: string; icon: string }> = {
   agent_joined: { dot: "var(--cyan)", icon: "+" },
@@ -105,10 +105,7 @@ export class FeedPanel implements Panel {
 
     this.items.unshift(item);
 
-    // Fade older items
-    this.items.forEach((el, i) => {
-      if (i >= 8) el.style.opacity = `${Math.max(0.15, 1 - (i - 7) * 0.12)}`;
-    });
+    // Older items stay fully visible — user can scroll to see them
 
     // Remove excess
     while (this.items.length > MAX_ITEMS) {

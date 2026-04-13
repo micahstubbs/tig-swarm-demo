@@ -16,7 +16,6 @@ export class ChartPanel implements Panel {
   private width = 0;
   private height = 0;
   private margin = { top: 28, right: 16, bottom: 28, left: 52 };
-  private tickHandle: ReturnType<typeof setInterval> | null = null;
 
   init(container: HTMLElement) {
     container.innerHTML = `
@@ -56,11 +55,7 @@ export class ChartPanel implements Panel {
     });
     observer.observe(svgEl.parentElement!);
 
-    // Tick the chart so the x-axis keeps growing with elapsed wall time even
-    // when no new improvements are landing.
-    this.tickHandle = setInterval(() => {
-      if (this.startTime > 0 && this.data.length > 0) this.redraw();
-    }, 1000);
+    // No continuous tick — the x-axis only advances when a new best lands.
   }
 
   handleMessage(msg: WSMessage) {
@@ -110,12 +105,10 @@ export class ChartPanel implements Panel {
     const w = this.width - m.left - m.right;
     const h = this.height - m.top - m.bottom;
 
-    // X-axis grows with the actual elapsed time since the first data point —
-    // this lets the chart keep "scrolling" even when no new bests arrive.
-    const elapsed = Math.max(0, Date.now() - this.startTime);
+    // X-axis only extends to the latest improvement — no continuous scroll.
     const latestData = d3.max(this.data, (d) => d.time)!;
     const xScale = d3.scaleLinear()
-      .domain([0, Math.max(elapsed, latestData, 1)])
+      .domain([0, Math.max(latestData, 1)])
       .range([0, w]);
 
     const scoreMin = d3.min(this.data, (d) => d.score)! * 0.98;
@@ -149,7 +142,7 @@ export class ChartPanel implements Panel {
       .x((d) => xScale(d.time))
       .y0(h)
       .y1((d) => yScale(d.score))
-      .curve(d3.curveMonotoneX);
+      .curve(d3.curveStepAfter);
 
     chartG.append("path")
       .datum(this.data)
@@ -160,7 +153,7 @@ export class ChartPanel implements Panel {
     const line = d3.line<DataPoint>()
       .x((d) => xScale(d.time))
       .y((d) => yScale(d.score))
-      .curve(d3.curveMonotoneX);
+      .curve(d3.curveStepAfter);
 
     chartG.append("path")
       .datum(this.data)

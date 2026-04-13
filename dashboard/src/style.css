@@ -514,9 +514,14 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow: hidden;
+  overflow-y: auto;
   height: calc(100% - 28px);
 }
+
+.feed-list::-webkit-scrollbar { width: 4px; }
+.feed-list::-webkit-scrollbar-track { background: transparent; }
+.feed-list::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+.feed-list::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
 .feed-item {
   display: flex;
