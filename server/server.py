@@ -422,6 +422,13 @@ async def create_experiment(req: ExperimentCreate):
     route_data_json = json.dumps(req.route_data) if req.route_data else None
 
     async with db.connect() as conn:
+        # Take the SQLite write lock up front (BEGIN IMMEDIATE) so the
+        # read→decide→write block below runs atomically with respect to
+        # concurrent publishes. Without this, two agents can both read the
+        # same prev_best, both conclude is_new_best=True, and both insert
+        # into best_history — producing non-monotonic rows in /api/replay.
+        await conn.execute("BEGIN IMMEDIATE")
+
         # Capture the previous global best AND the baseline BEFORE inserting
         # this experiment, otherwise `get_global_best` returns the row we just
         # wrote and the first-ever experiment is never flagged as a new best,
@@ -674,6 +681,12 @@ async def admin_reset(req: AdminAuth):
         await conn.execute("DELETE FROM agents")
         await conn.execute("DELETE FROM messages")
         await conn.execute("DELETE FROM knowledge WHERE id = 1")
+        # best_history must go too. Leaving it behind means the next run's
+        # first experiment sees prev_best=None (empty experiments table), gets
+        # flagged is_new_best, and its row lands in best_history alongside the
+        # previous run's winning scores — producing bogus upward jumps in
+        # /api/replay that the chart has to filter out.
+        await conn.execute("DELETE FROM best_history")
         await conn.commit()
     await manager.broadcast({"type": "reset", "timestamp": now()})
     return {"reset": True}
