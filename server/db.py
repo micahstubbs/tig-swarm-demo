@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS agents (
     last_heartbeat TEXT NOT NULL,
     status TEXT DEFAULT 'idle',
     experiments_completed INTEGER DEFAULT 0,
-    best_score REAL
+    best_score REAL,
+    last_served_branch_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS hypotheses (
@@ -27,8 +28,22 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     status TEXT DEFAULT 'proposed',
     fingerprint TEXT NOT NULL,
     parent_hypothesis_id TEXT,
+    branch_agent_id TEXT,
     claimed_by TEXT,
     created_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_bests (
+    agent_id TEXT PRIMARY KEY,
+    experiment_id TEXT NOT NULL,
+    algorithm_code TEXT NOT NULL,
+    score REAL NOT NULL,
+    feasible INTEGER NOT NULL DEFAULT 1,
+    num_vehicles INTEGER DEFAULT 0,
+    total_distance REAL DEFAULT 0.0,
+    route_data TEXT,
+    updated_at TEXT NOT NULL,
     FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 
@@ -69,10 +84,6 @@ CREATE TABLE IF NOT EXISTS knowledge (
     updated_by TEXT DEFAULT ''
 );
 
-CREATE INDEX IF NOT EXISTS idx_exp_feasible_score ON experiments(feasible, score);
-CREATE INDEX IF NOT EXISTS idx_exp_agent ON experiments(agent_id);
-CREATE INDEX IF NOT EXISTS idx_hyp_status ON hypotheses(status);
-CREATE INDEX IF NOT EXISTS idx_hyp_fingerprint ON hypotheses(fingerprint);
 CREATE TABLE IF NOT EXISTS best_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     experiment_id TEXT NOT NULL,
@@ -81,7 +92,19 @@ CREATE TABLE IF NOT EXISTS best_history (
     route_data TEXT,
     created_at TEXT NOT NULL
 );
+"""
 
+# Indexes are split out from the main schema because a couple of them
+# reference columns introduced by later migrations (e.g. branch_agent_id).
+# They run *after* the ALTER TABLE migrations in init_db, so they succeed
+# on both fresh and upgraded databases.
+SCHEMA_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_exp_feasible_score ON experiments(feasible, score);
+CREATE INDEX IF NOT EXISTS idx_exp_agent ON experiments(agent_id);
+CREATE INDEX IF NOT EXISTS idx_hyp_status ON hypotheses(status);
+CREATE INDEX IF NOT EXISTS idx_hyp_fingerprint ON hypotheses(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_hyp_branch ON hypotheses(branch_agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_bests_score ON agent_bests(feasible, score);
 CREATE INDEX IF NOT EXISTS idx_msg_created ON messages(created_at);
 """
 
@@ -93,13 +116,52 @@ DEFAULT_CONFIG = {
 
 async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
+        # 1) Tables first. All table DDL is IF NOT EXISTS so fresh and
+        #    upgraded databases both work.
         await db.executescript(SCHEMA)
-        # Migrate: rename algorithm_diff -> algorithm_code if old column exists
+        # 2) Column migrations. ADD COLUMN fails if the column exists;
+        #    that's expected on every subsequent run.
         try:
             await db.execute("ALTER TABLE experiments RENAME COLUMN algorithm_diff TO algorithm_code")
             await db.commit()
         except Exception:
-            pass  # Column already renamed or doesn't exist
+            pass
+        for stmt in (
+            "ALTER TABLE agents ADD COLUMN last_served_branch_id TEXT",
+            "ALTER TABLE hypotheses ADD COLUMN branch_agent_id TEXT",
+        ):
+            try:
+                await db.execute(stmt)
+                await db.commit()
+            except Exception:
+                pass
+        # 3) Indexes last, *after* the migrations above — some of them
+        #    reference columns that only exist post-migration.
+        await db.executescript(SCHEMA_INDEXES)
+        # 4) Backfill agent_bests from the existing experiments table on
+        #    first upgrade. Without this, an existing deployment would see
+        #    an empty agent_bests, collapse to cold start, and serve every
+        #    agent the Solomon seed until someone republishes. ON CONFLICT
+        #    DO NOTHING makes this a no-op on subsequent boots.
+        await db.execute(
+            """INSERT INTO agent_bests
+               (agent_id, experiment_id, algorithm_code, score, feasible,
+                num_vehicles, total_distance, route_data, updated_at)
+               SELECT agent_id, id, algorithm_code, score, 1,
+                      num_vehicles, total_distance, route_data, created_at
+               FROM (
+                   SELECT e.*,
+                          ROW_NUMBER() OVER (
+                              PARTITION BY e.agent_id
+                              ORDER BY e.score ASC, e.created_at ASC
+                          ) AS rn
+                   FROM experiments e
+                   WHERE e.feasible = 1
+               )
+               WHERE rn = 1
+               ON CONFLICT(agent_id) DO NOTHING"""
+        )
+        await db.commit()
         for key, value in DEFAULT_CONFIG.items():
             await db.execute(
                 "INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)",
@@ -126,11 +188,108 @@ async def get_config(conn: aiosqlite.Connection) -> dict:
 
 
 async def get_global_best(conn: aiosqlite.Connection) -> dict | None:
+    # Global best is the best-scoring `agent_bests` row — i.e. whichever
+    # agent's branch currently holds the lowest feasible score. `id` is
+    # aliased to experiment_id so callers that expect the old experiments
+    # shape (best["id"] meaning the experiment row) keep working.
     cursor = await conn.execute(
-        "SELECT * FROM experiments WHERE feasible = 1 ORDER BY score ASC LIMIT 1"
+        "SELECT agent_id, experiment_id as id, experiment_id, algorithm_code, "
+        "       score, feasible, num_vehicles, total_distance, route_data, updated_at "
+        "FROM agent_bests WHERE feasible = 1 "
+        "ORDER BY score ASC LIMIT 1"
     )
     row = await cursor.fetchone()
     return dict(row) if row else None
+
+
+async def get_agent_best(
+    conn: aiosqlite.Connection, agent_id: str
+) -> dict | None:
+    cursor = await conn.execute(
+        "SELECT agent_id, experiment_id as id, experiment_id, algorithm_code, "
+        "       score, feasible, num_vehicles, total_distance, route_data, updated_at "
+        "FROM agent_bests WHERE agent_id = ?",
+        (agent_id,),
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def upsert_agent_best(
+    conn: aiosqlite.Connection,
+    agent_id: str,
+    experiment_id: str,
+    algorithm_code: str,
+    score: float,
+    feasible: bool,
+    num_vehicles: int,
+    total_distance: float,
+    route_data: str | None,
+    updated_at: str,
+) -> None:
+    await conn.execute(
+        """INSERT INTO agent_bests
+           (agent_id, experiment_id, algorithm_code, score, feasible,
+            num_vehicles, total_distance, route_data, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(agent_id) DO UPDATE SET
+             experiment_id = excluded.experiment_id,
+             algorithm_code = excluded.algorithm_code,
+             score = excluded.score,
+             feasible = excluded.feasible,
+             num_vehicles = excluded.num_vehicles,
+             total_distance = excluded.total_distance,
+             route_data = excluded.route_data,
+             updated_at = excluded.updated_at""",
+        (agent_id, experiment_id, algorithm_code, score,
+         1 if feasible else 0, num_vehicles, total_distance,
+         route_data, updated_at),
+    )
+
+
+async def list_agent_bests(
+    conn: aiosqlite.Connection,
+    exclude_agent_ids: list[str] | None = None,
+) -> list[dict]:
+    # All feasible agent-bests, optionally excluding specific agent ids.
+    # Returned shape matches `get_global_best` so callers can treat the
+    # rows interchangeably.
+    exclude = exclude_agent_ids or []
+    if exclude:
+        placeholders = ",".join("?" for _ in exclude)
+        query = (
+            "SELECT agent_id, experiment_id as id, experiment_id, algorithm_code, "
+            "       score, feasible, num_vehicles, total_distance, route_data, updated_at "
+            f"FROM agent_bests WHERE feasible = 1 AND agent_id NOT IN ({placeholders}) "
+            "ORDER BY score ASC"
+        )
+        cursor = await conn.execute(query, exclude)
+    else:
+        cursor = await conn.execute(
+            "SELECT agent_id, experiment_id as id, experiment_id, algorithm_code, "
+            "       score, feasible, num_vehicles, total_distance, route_data, updated_at "
+            "FROM agent_bests WHERE feasible = 1 ORDER BY score ASC"
+        )
+    return [dict(row) for row in await cursor.fetchall()]
+
+
+async def set_last_served_branch(
+    conn: aiosqlite.Connection, agent_id: str, branch_agent_id: str | None
+) -> None:
+    await conn.execute(
+        "UPDATE agents SET last_served_branch_id = ? WHERE id = ?",
+        (branch_agent_id, agent_id),
+    )
+
+
+async def get_last_served_branch(
+    conn: aiosqlite.Connection, agent_id: str
+) -> str | None:
+    cursor = await conn.execute(
+        "SELECT last_served_branch_id FROM agents WHERE id = ?", (agent_id,)
+    )
+    row = await cursor.fetchone()
+    return row["last_served_branch_id"] if row else None
 
 
 async def get_agent_count(conn: aiosqlite.Connection, active_only: bool = False) -> int:

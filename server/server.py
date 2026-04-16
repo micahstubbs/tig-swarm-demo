@@ -1,6 +1,7 @@
 import json
 import asyncio
 import logging
+import random
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -233,16 +234,65 @@ async def heartbeat(agent_id: str, req: HeartbeatRequest):
 
 # ── State endpoint ──
 
+def _pick_branch(
+    global_best: dict | None,
+    all_bests: list[dict],
+) -> dict | None:
+    """Coin-flip branch selection.
+
+    50% heads → serve the global best branch.
+    50% tails → uniform random over `agent_bests` *excluding* the global
+    best holder. The caller may sample their own branch (unless they are
+    the global best holder, in which case they're excluded by the above).
+    Returns the chosen agent_best row, or None if no feasible best exists.
+    """
+    if global_best is None:
+        return None
+    if random.random() < 0.5:
+        return global_best
+    pool = [b for b in all_bests if b["agent_id"] != global_best["agent_id"]]
+    if not pool:
+        # Only one agent has a best — fall back to global best.
+        return global_best
+    return random.choice(pool)
+
+
 @app.get("/api/state")
-async def get_state():
+async def get_state(agent_id: str | None = None):
+    """Return current swarm state.
+
+    When `agent_id` is supplied, a per-agent branch is served via coin flip
+    and hypothesis lists are scoped to that branch. When omitted, legacy
+    behaviour: the global best branch and all hypotheses (used by the
+    dashboard).
+    """
     config = await get_config_cached()
 
     async with db.connect() as conn:
-        best = await db.get_global_best(conn)
+        global_best = await db.get_global_best(conn)
         baseline = await get_baseline_score(conn)
         active = await db.get_agent_count(conn, active_only=True)
 
         total_exp = (await (await conn.execute("SELECT COUNT(*) as c FROM experiments")).fetchone())["c"]
+
+        if agent_id is not None:
+            all_bests = await db.list_agent_bests(conn)
+            served = _pick_branch(global_best, all_bests)
+            # Record the served branch so later hypothesis proposals from
+            # this agent can be attributed to it. NULL is recorded on cold
+            # start (no feasible bests yet) — hypothesis scoping treats
+            # NULL as "seed branch".
+            await db.set_last_served_branch(
+                conn, agent_id, served["agent_id"] if served else None
+            )
+            await conn.commit()
+        else:
+            served = global_best
+
+        served_branch_id = served["agent_id"] if served else None
+        served_branch_name = (
+            await get_agent_name(conn, served_branch_id) if served_branch_id else None
+        )
 
         cursor = await conn.execute("""
             SELECT e.*, a.name as agent_name,
@@ -252,48 +302,76 @@ async def get_state():
         """)
         recent_experiments = [dict(row) for row in await cursor.fetchall()]
 
-        cursor = await conn.execute("""
-            SELECT h.*, a.name as agent_name
-            FROM hypotheses h JOIN agents a ON a.id = h.agent_id
-            WHERE h.status IN ('proposed', 'claimed', 'testing')
-            ORDER BY h.created_at DESC
-        """)
+        # Hypothesis scoping: filter by the branch the caller was served.
+        # Anonymous callers (no agent_id) see every hypothesis — this keeps
+        # the dashboard unchanged.
+        if agent_id is not None:
+            if served_branch_id is None:
+                branch_clause = "AND h.branch_agent_id IS NULL"
+                branch_params: list = []
+            else:
+                branch_clause = "AND h.branch_agent_id = ?"
+                branch_params = [served_branch_id]
+        else:
+            branch_clause = ""
+            branch_params = []
+
+        cursor = await conn.execute(
+            f"""SELECT h.*, a.name as agent_name
+                FROM hypotheses h JOIN agents a ON a.id = h.agent_id
+                WHERE h.status IN ('proposed', 'claimed', 'testing')
+                {branch_clause}
+                ORDER BY h.created_at DESC""",
+            branch_params,
+        )
         active_hypotheses = [dict(row) for row in await cursor.fetchall()]
 
-        cursor = await conn.execute("""
-            SELECT h.id, h.title, h.strategy_tag, h.description, a.name as agent_name
-            FROM hypotheses h JOIN agents a ON a.id = h.agent_id
-            WHERE h.status = 'failed'
-            ORDER BY h.created_at DESC LIMIT 20
-        """)
+        cursor = await conn.execute(
+            f"""SELECT h.id, h.title, h.strategy_tag, h.description,
+                       h.branch_agent_id, a.name as agent_name
+                FROM hypotheses h JOIN agents a ON a.id = h.agent_id
+                WHERE h.status = 'failed'
+                {branch_clause}
+                ORDER BY h.created_at DESC LIMIT 20""",
+            branch_params,
+        )
         failed_hypotheses = [dict(row) for row in await cursor.fetchall()]
 
-        cursor = await conn.execute("""
-            SELECT h.id, h.title, h.strategy_tag, h.description, a.name as agent_name
-            FROM hypotheses h JOIN agents a ON a.id = h.agent_id
-            WHERE h.status = 'succeeded'
-            ORDER BY h.created_at DESC LIMIT 10
-        """)
+        cursor = await conn.execute(
+            f"""SELECT h.id, h.title, h.strategy_tag, h.description,
+                       h.branch_agent_id, a.name as agent_name
+                FROM hypotheses h JOIN agents a ON a.id = h.agent_id
+                WHERE h.status = 'succeeded'
+                {branch_clause}
+                ORDER BY h.created_at DESC LIMIT 10""",
+            branch_params,
+        )
         succeeded_hypotheses = [dict(row) for row in await cursor.fetchall()]
 
-        best_route_data = best["route_data"] if best else None
+        best_route_data = served["route_data"] if served else None
         num_instances = get_num_instances(config, best_route_data)
         leaderboard = await db.compute_leaderboard(conn)
 
-    best_score = best["score"] if best else None
+    global_best_score = global_best["score"] if global_best else None
     overall_imp = (
-        improvement_pct(baseline, best_score)
-        if baseline is not None and best_score is not None
+        improvement_pct(baseline, global_best_score)
+        if baseline is not None and global_best_score is not None
         else 0
     )
 
     return {
         "baseline_score": baseline,
-        "best_score": best_score,
+        "best_score": global_best_score,
         "improvement_pct": overall_imp,
-        "best_algorithm_code": best["algorithm_code"] if best else SEED_ALGORITHM_CODE,
-        "best_experiment_id": best["id"] if best else None,
-        "best_route_data": json.loads(best["route_data"]) if best and best["route_data"] else None,
+        # best_algorithm_code reflects the *served* branch (coin-flipped
+        # when agent_id is supplied, global best otherwise). On cold start
+        # with no agent_bests yet, every caller gets the Solomon seed.
+        "best_algorithm_code": served["algorithm_code"] if served else SEED_ALGORITHM_CODE,
+        "best_experiment_id": served["id"] if served else None,
+        "best_route_data": json.loads(served["route_data"]) if served and served["route_data"] else None,
+        "served_branch_agent_id": served_branch_id,
+        "served_branch_agent_name": served_branch_name,
+        "served_branch_score": served["score"] if served else None,
         "num_instances": num_instances,
         "active_agents": active,
         "total_experiments": total_exp,
@@ -318,19 +396,23 @@ async def get_state():
             {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
              "status": h["status"], "agent_name": h["agent_name"],
              "description": h["description"], "parent_hypothesis_id": h.get("parent_hypothesis_id"),
-             "agent_id": h["agent_id"]}
+             "agent_id": h["agent_id"], "branch_agent_id": h.get("branch_agent_id")}
             for h in active_hypotheses
         ],
         "failed_hypotheses": [
             {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
              "agent_name": h["agent_name"], "description": h["description"],
-             "parent_hypothesis_id": h.get("parent_hypothesis_id"), "agent_id": h.get("agent_id", "")}
+             "parent_hypothesis_id": h.get("parent_hypothesis_id"),
+             "agent_id": h.get("agent_id", ""),
+             "branch_agent_id": h.get("branch_agent_id")}
             for h in failed_hypotheses
         ],
         "succeeded_hypotheses": [
             {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
              "agent_name": h["agent_name"], "description": h["description"],
-             "parent_hypothesis_id": h.get("parent_hypothesis_id"), "agent_id": h.get("agent_id", "")}
+             "parent_hypothesis_id": h.get("parent_hypothesis_id"),
+             "agent_id": h.get("agent_id", ""),
+             "branch_agent_id": h.get("branch_agent_id")}
             for h in succeeded_hypotheses
         ],
         "leaderboard": leaderboard,
@@ -368,13 +450,19 @@ async def create_hypothesis(req: HypothesisCreate):
         status = "claimed" if req.auto_claim else "proposed"
         claimed_by = req.agent_id if req.auto_claim else None
 
+        # Attach the hypothesis to whichever branch the server most
+        # recently served to this agent. NULL means "seed/unknown" and
+        # scopes the hypothesis to cold-start state. There is no caller-
+        # supplied branch override — this keeps the agent protocol tiny.
+        branch_agent_id = await db.get_last_served_branch(conn, req.agent_id)
+
         await conn.execute(
             """INSERT INTO hypotheses
                (id, agent_id, title, description, strategy_tag, status, fingerprint,
-                parent_hypothesis_id, claimed_by, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                parent_hypothesis_id, branch_agent_id, claimed_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (hyp_id, req.agent_id, req.title, req.description, req.strategy_tag,
-             status, fp, req.parent_hypothesis_id, claimed_by, timestamp),
+             status, fp, req.parent_hypothesis_id, branch_agent_id, claimed_by, timestamp),
         )
         await conn.commit()
 
@@ -389,6 +477,7 @@ async def create_hypothesis(req: HypothesisCreate):
         "description": req.description,
         "strategy_tag": req.strategy_tag,
         "parent_hypothesis_id": req.parent_hypothesis_id,
+        "branch_agent_id": branch_agent_id,
         "timestamp": timestamp,
     })
 
@@ -429,13 +518,21 @@ async def create_experiment(req: ExperimentCreate):
         # into best_history — producing non-monotonic rows in /api/replay.
         await conn.execute("BEGIN IMMEDIATE")
 
-        # Capture the previous global best AND the baseline BEFORE inserting
-        # this experiment, otherwise `get_global_best` returns the row we just
-        # wrote and the first-ever experiment is never flagged as a new best,
-        # and `get_baseline_score` would return this row's own score.
+        # Capture the previous global best, the publishing agent's prior
+        # own-best, and the baseline BEFORE inserting. Otherwise a read
+        # after the insert would return the row we just wrote — breaking
+        # is_new_best, beats_own_best, and baseline detection.
         prev_best = await db.get_global_best(conn)
+        prev_agent_best = await db.get_agent_best(conn, req.agent_id)
         baseline = await get_baseline_score(conn)
+
         is_new_best = req.feasible and (prev_best is None or req.score < prev_best["score"])
+        # beats_own_best: did this experiment improve the publishing agent's
+        # own branch? Drives both agent_bests updates and the hypothesis
+        # success/fail label — "succeeded" now means "improved my branch".
+        beats_own_best = req.feasible and (
+            prev_agent_best is None or req.score < prev_agent_best["score"]
+        )
 
         await conn.execute(
             """INSERT INTO experiments
@@ -456,6 +553,23 @@ async def create_experiment(req: ExperimentCreate):
             await conn.execute(
                 "UPDATE agents SET best_score = MIN(COALESCE(best_score, ?), ?) WHERE id = ?",
                 (req.score, req.score, req.agent_id),
+            )
+
+        # Upsert this agent's branch when their own score improves. This is
+        # the canonical source of truth for "branches" — global best is
+        # derived as min(agent_bests.score).
+        if beats_own_best:
+            await db.upsert_agent_best(
+                conn,
+                agent_id=req.agent_id,
+                experiment_id=exp_id,
+                algorithm_code=req.algorithm_code,
+                score=req.score,
+                feasible=req.feasible,
+                num_vehicles=req.num_vehicles,
+                total_distance=req.total_distance,
+                route_data=route_data_json,
+                updated_at=timestamp,
             )
 
         agent_name = await get_agent_name(conn, req.agent_id)
@@ -484,16 +598,11 @@ async def create_experiment(req: ExperimentCreate):
 
         hyp_status = None
         if req.hypothesis_id:
-            # Succeeded if this sets a new best, or if there is already a
-            # baseline and this beats it. On the very first feasible run the
-            # baseline isn't set yet, but that run is also is_new_best, so
-            # the first branch catches it.
-            beats_baseline = (
-                req.feasible
-                and baseline is not None
-                and req.score < baseline
-            )
-            hyp_status = "succeeded" if (is_new_best or beats_baseline) else "failed"
+            # Under the branch model: a hypothesis succeeds iff it improves
+            # the publishing agent's own branch. This replaces the old
+            # "beats baseline" rule, which became noisy once many branches
+            # existed at different score levels.
+            hyp_status = "succeeded" if beats_own_best else "failed"
             await conn.execute(
                 "UPDATE hypotheses SET status = ? WHERE id = ?",
                 (hyp_status, req.hypothesis_id),
@@ -681,6 +790,10 @@ async def admin_reset(req: AdminAuth):
         await conn.execute("DELETE FROM agents")
         await conn.execute("DELETE FROM messages")
         await conn.execute("DELETE FROM knowledge WHERE id = 1")
+        # agent_bests is derived data — without this, stale branch rows
+        # point to just-deleted agent ids, corrupting global-best
+        # computation and the /api/state coin flip on the next run.
+        await conn.execute("DELETE FROM agent_bests")
         # best_history must go too. Leaving it behind means the next run's
         # first experiment sees prev_best=None (empty experiments table), gets
         # flagged is_new_best, and its row lands in best_history alongside the

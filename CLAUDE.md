@@ -30,17 +30,24 @@ Repeat this loop continuously:
 ### Step 1: Get Current State
 
 ```bash
-curl -s https://swarm-coordination-production.up.railway.app/api/state
+curl -s "https://swarm-coordination-production.up.railway.app/api/state?agent_id=YOUR_AGENT_ID"
 ```
 
-This returns:
-- `best_score` — the score to beat
-- `failed_hypotheses` — ideas that were tried and didn't work (DON'T repeat these)
-- `succeeded_hypotheses` — ideas that worked (build on these)
-- `active_hypotheses` — ideas currently being tested by other agents (don't duplicate)
-- `leaderboard` — current rankings
+**Pass your `agent_id` as a query param.** The server uses it to (a) serve you a branch via a 50/50 coin flip — either the current global best, or a uniformly sampled branch from another agent — and (b) remember which branch you were served so any hypothesis you later propose is scoped to the right branch.
 
-**CRITICAL**: Always read the state before proposing. Study what failed and why.
+This returns:
+- `best_score` — the current **global** best score (lowest across all agents)
+- `served_branch_agent_name` — whose branch you were served (global best 50% of the time; otherwise a random peer's)
+- `served_branch_score` — the score of the branch you were served (may be worse than `best_score` when exploring)
+- `best_algorithm_code` — the code of the branch you were served (write it to `mod.rs`)
+- `failed_hypotheses` — ideas tried against the branch you were served that didn't improve it (DON'T repeat)
+- `succeeded_hypotheses` — ideas that did improve the branch you were served (build on these)
+- `active_hypotheses` — ideas currently being tested against the branch you were served
+- `leaderboard` — current rankings (global)
+
+The hypothesis lists are **scoped to the branch you were served** — you won't see hypotheses from other branches, because they don't apply to the code you have.
+
+**CRITICAL**: Always read the state before proposing. Study what failed and why on this branch.
 
 ### Step 2: Think and Propose a Hypothesis
 
@@ -73,15 +80,17 @@ If a strategy tag is saturated (too many active hypotheses in that category), tr
 
 ### Step 3: Sync and Implement
 
-Fetch the current best algorithm from the server and write it to `mod.rs`, then make your changes on top:
+Fetch the branch the server picked for you and write it to `mod.rs`, then make your changes on top:
 
 ```bash
-curl -s https://swarm-coordination-production.up.railway.app/api/state \
+curl -s "https://swarm-coordination-production.up.railway.app/api/state?agent_id=YOUR_AGENT_ID" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('best_algorithm_code',''))" \
   > src/vehicle_routing/algorithm/mod.rs
 ```
 
-The server always returns valid code: either the current global best or, on a fresh run before any experiments have been published, a **Solomon seed** — a thin `solve_challenge` wrapper around the classic Solomon insertion heuristic. Whichever you receive, that's your starting point. The first agent to benchmark the Solomon seed publishes it as the initial best, and every agent after that builds on the current winning algorithm.
+The server always returns valid code: either the branch it selected for you (global best 50% of the time, a randomly-sampled peer's branch otherwise), or — on a fresh run before any experiments have been published — a **Solomon seed**, a thin `solve_challenge` wrapper around the classic Solomon insertion heuristic. Whichever you receive, that's your starting point.
+
+**Make sure you call `/api/state` with your `agent_id` in Step 1 before Step 3** — the server uses the most recent state query to decide which branch's hypotheses to attach your proposals to. A single `/api/state` call per loop iteration is the clean pattern: query once, read the code out of the same response for Step 3.
 
 Now read `src/vehicle_routing/algorithm/mod.rs` and edit it with your improvements.
 
