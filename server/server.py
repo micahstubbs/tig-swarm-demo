@@ -973,6 +973,53 @@ async def get_knowledge():
     return {"content": "", "updated_at": "", "updated_by": ""}
 
 
+# ── Diversity ──
+
+@app.get("/api/diversity")
+async def get_diversity():
+    async with db.connect() as conn:
+        cursor = await conn.execute(
+            """SELECT ab.agent_id, a.name as agent_name, ab.algorithm_code
+               FROM agent_bests ab
+               JOIN agents a ON a.id = ab.agent_id
+               WHERE ab.feasible = 1
+               ORDER BY ab.score ASC"""
+        )
+        rows = [dict(row) for row in await cursor.fetchall()]
+
+    if not rows:
+        return {"agents": [], "matrix": []}
+
+    agents = []
+    line_sets = []
+    for row in rows:
+        agents.append({
+            "agent_id": row["agent_id"],
+            "agent_name": row["agent_name"],
+        })
+        lines = set(row["algorithm_code"].splitlines())
+        lines.discard("")
+        line_sets.append(lines)
+
+    n = len(agents)
+    all_others = [set().union(*(line_sets[k] for k in range(n) if k != i)) for i in range(n)]
+
+    matrix = []
+    for i in range(n):
+        total = len(line_sets[i]) or 1
+        row = []
+        for j in range(n):
+            if i == j:
+                unique = line_sets[i] - all_others[i]
+                row.append(round(len(unique) / total, 3))
+            else:
+                shared = line_sets[i] & line_sets[j]
+                row.append(round(len(shared) / total, 3))
+        matrix.append(row)
+
+    return {"agents": agents, "matrix": matrix}
+
+
 # ── Replay ──
 
 @app.get("/api/replay")
