@@ -26,6 +26,13 @@ DEFAULT_HOSTS_CONFIG: dict = {
 
 HOSTS_FILE: Path = Path.home() / ".tig-swarm" / "hosts.json"
 
+# Cloudflare's default WAF rules reject the built-in Python-urllib UA.
+# Sending a generic browser-ish UA lets requests pass edge filtering.
+USER_AGENT: str = os.environ.get(
+    "TIG_USER_AGENT",
+    "tig-swarm-client/1.0 (+https://github.com/SteveDiamond/tig-swarm-demo)",
+)
+
 
 # ---------------------------------------------------------------------------
 # Config persistence
@@ -104,7 +111,10 @@ def post(host: str, path: str, payload: dict, timeout: int = 30) -> dict:
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
     try:
@@ -124,7 +134,7 @@ def get(host: str, path: str, params: dict = None, timeout: int = 30) -> dict:
     url = host.rstrip("/") + path
     if params:
         url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, method="GET")
+    req = urllib.request.Request(url, method="GET", headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
