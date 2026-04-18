@@ -67,7 +67,7 @@ pub fn solve_challenge(
     let mut cached_total_custs: usize = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
 
     // ====== Phase 4: ALNS ======
-    let num_destroy_ops = 4;
+    let num_destroy_ops = 5;
     let num_repair_ops = 2;
     let mut d_weights = vec![1.0f64; num_destroy_ops];
     let mut r_weights = vec![1.0f64; num_repair_ops];
@@ -97,7 +97,8 @@ pub fn solve_challenge(
             0 => random_removal(&routes, destroy_count, &mut rng),
             1 => worst_removal(&routes, destroy_count, dm, &mut rng),
             2 => shaw_removal(&routes, destroy_count, &shaw_neighbors, &mut rng),
-            _ => route_removal(&routes, destroy_count, &mut rng),
+            3 => route_removal(&routes, destroy_count, &mut rng),
+            _ => string_removal(&routes, destroy_count, dm, &mut rng),
         };
 
         if removed.is_empty() { continue; }
@@ -371,6 +372,71 @@ fn route_removal(routes: &[Vec<usize>], target_count: usize, rng: &mut u64) -> V
         }
     }
     out
+}
+
+fn string_removal(routes: &[Vec<usize>], target: usize, dm: &[Vec<i32>], rng: &mut u64) -> Vec<usize> {
+    if routes.is_empty() { return Vec::new(); }
+    let lmax = 5usize;
+    let mut out = Vec::with_capacity(target);
+    let mut removed_set = vec![false; dm.len()];
+    let mut route_used = vec![false; routes.len()];
+
+    let custs: Vec<usize> = routes.iter()
+        .flat_map(|r| r.iter().filter(|&&x| x != 0).copied()).collect();
+    if custs.is_empty() { return Vec::new(); }
+    let seed = custs[(rand_lcg(rng) as usize) % custs.len()];
+
+    let seed_ri = routes.iter().position(|r| r.contains(&seed)).unwrap();
+    extract_string(routes, seed_ri, seed, lmax, rng, &mut out, &mut removed_set);
+    route_used[seed_ri] = true;
+
+    while out.len() < target {
+        let ref_cust = out[(rand_lcg(rng) as usize) % out.len()];
+        let mut best_ri = usize::MAX;
+        let mut best_dist = i32::MAX;
+        for (ri, route) in routes.iter().enumerate() {
+            if route_used[ri] || route.len() <= 2 { continue; }
+            for &c in route.iter().filter(|&&x| x != 0) {
+                if !removed_set[c] && dm[ref_cust][c] < best_dist {
+                    best_dist = dm[ref_cust][c];
+                    best_ri = ri;
+                }
+            }
+        }
+        if best_ri == usize::MAX { break; }
+        let avail: Vec<usize> = routes[best_ri].iter()
+            .filter(|&&x| x != 0 && !removed_set[x]).copied().collect();
+        if avail.is_empty() { route_used[best_ri] = true; continue; }
+        let anchor = avail[(rand_lcg(rng) as usize) % avail.len()];
+        extract_string(routes, best_ri, anchor, lmax, rng, &mut out, &mut removed_set);
+        route_used[best_ri] = true;
+    }
+    out.truncate(target);
+    out
+}
+
+fn extract_string(
+    routes: &[Vec<usize>], ri: usize, anchor: usize, lmax: usize,
+    rng: &mut u64, out: &mut Vec<usize>, removed: &mut [bool],
+) {
+    let route = &routes[ri];
+    let num_custs = route.len().saturating_sub(2);
+    if num_custs == 0 { return; }
+    let pos = match route.iter().position(|&x| x == anchor) {
+        Some(p) => p,
+        None => return,
+    };
+    let slen = 1 + (rand_lcg(rng) as usize) % lmax.min(num_custs);
+    let half = slen / 2;
+    let start = if pos <= half { 1 } else { (pos - half).max(1) };
+    let end = (start + slen).min(route.len() - 1);
+    for i in start..end {
+        let c = route[i];
+        if c != 0 && !removed[c] {
+            removed[c] = true;
+            out.push(c);
+        }
+    }
 }
 
 // ---- Repair operators ----

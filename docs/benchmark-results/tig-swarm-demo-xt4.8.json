@@ -1,0 +1,13 @@
+{
+  "issue_id": "tig-swarm-demo-xt4.8",
+  "score": 7363.291666666667,
+  "total_distance": 176719,
+  "num_vehicles": 640,
+  "feasible": true,
+  "instances_solved": 24,
+  "instances_feasible": 24,
+  "instances_infeasible": 0,
+  "baseline_score": 7391.083333333333,
+  "delta": -27.79166666666606,
+  "delta_pct": -0.3760161455808156
+}
