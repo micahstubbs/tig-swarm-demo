@@ -1,5 +1,6 @@
 import type { Panel, WSMessage } from "../types";
 import { getAgentColor } from "../lib/colors";
+import { escapeHtml } from "../lib/escape";
 
 interface TopEntry {
   experiment_id: string;
@@ -155,16 +156,13 @@ export class StrategyLeaderboardPanel implements Panel {
         <span class="sl-rank">${i + 1}</span>
         <span class="sl-score">${entry.score.toFixed(1)}</span>
         <span class="sl-tag-col">
-          <span class="sl-tag" style="color:${tagColor};border-color:${tagColor}">${this.escape(tag)}</span>
+          <span class="sl-tag" style="color:${tagColor};border-color:${tagColor}">${escapeHtml(tag)}</span>
         </span>
-        <span class="sl-title" title="${this.escape(title)}">${this.escape(title)}</span>
-        <span class="sl-agent" style="color:${agentColor}">${this.escape(agentName)}</span>
+        <span class="sl-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+        <span class="sl-agent" style="color:${agentColor}">${escapeHtml(agentName)}</span>
       `;
       this.listEl.appendChild(row);
     });
   }
 
-  private escape(s: string): string {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
 }

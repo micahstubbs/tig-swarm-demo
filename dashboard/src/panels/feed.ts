@@ -1,6 +1,7 @@
 import type { Panel, WSMessage } from "../types";
 import { formatTime } from "../lib/animate";
 import { getAgentColor } from "../lib/colors";
+import { escapeHtml } from "../lib/escape";
 
 const MAX_ITEMS = 200;
 
@@ -39,11 +40,11 @@ export class FeedPanel implements Panel {
 
     switch (msg.type) {
       case "agent_joined":
-        text = `<b>${msg.agent_name}</b> joined the swarm`;
+        text = `<b>${escapeHtml(msg.agent_name)}</b> joined the swarm`;
         eventType = "agent_joined";
         break;
       case "hypothesis_proposed":
-        text = `<b>${msg.agent_name}</b> proposed: "${msg.title}"`;
+        text = `<b>${escapeHtml(msg.agent_name)}</b> proposed: "${escapeHtml(msg.title)}"`;
         eventType = "hypothesis_proposed";
         break;
       case "experiment_published": {
@@ -71,23 +72,23 @@ export class FeedPanel implements Panel {
           // Beat own best AND global best.
           const ownStr = ownDelta != null ? ` (${fmtDelta(ownDelta)} own)` : "";
           const globalStr = globalDelta != null ? ` ${fmtDelta(globalDelta)} vs global` : "";
-          text = `<b>${msg.agent_name}</b> improved &mdash; ${msg.score.toFixed(1)}${ownStr} · NEW GLOBAL BEST${globalStr}`;
+          text = `<b>${escapeHtml(msg.agent_name)}</b> improved &mdash; ${msg.score.toFixed(1)}${ownStr} · NEW GLOBAL BEST${globalStr}`;
           eventType = "new_global_best";
         } else if (beatsOwn) {
           const ownStr = ownDelta != null ? ` (${fmtDelta(ownDelta)})` : "";
-          text = `<b>${msg.agent_name}</b> improvement &mdash; ${msg.score.toFixed(1)}${ownStr}`;
+          text = `<b>${escapeHtml(msg.agent_name)}</b> improvement &mdash; ${msg.score.toFixed(1)}${ownStr}`;
           eventType = "experiment_success";
         } else {
           // Show the regression vs own best when available so the magnitude
           // of "no improvement" is visible (e.g. +0.42% = slightly worse).
           const ownStr = ownDelta != null ? ` (${fmtDelta(ownDelta)} vs own)` : "";
-          text = `<b>${msg.agent_name}</b> no improvement &mdash; ${msg.score.toFixed(1)}${ownStr}`;
+          text = `<b>${escapeHtml(msg.agent_name)}</b> no improvement &mdash; ${msg.score.toFixed(1)}${ownStr}`;
           eventType = "experiment_fail";
         }
         break;
       }
       case "admin_broadcast":
-        text = `<b>ADMIN</b>: ${msg.message}`;
+        text = `<b>ADMIN</b>: ${escapeHtml(msg.message)}`;
         eventType = "new_global_best";
         break;
       default:

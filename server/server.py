@@ -79,7 +79,7 @@ async def get_baseline_score(conn) -> float | None:
 
 async def verify_admin(req: AdminAuth) -> None:
     config = await get_config_cached()
-    if req.admin_key != config.get("admin_key", "ads-2026"):
+    if req.admin_key != config.get("admin_key"):
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
 

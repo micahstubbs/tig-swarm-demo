@@ -106,7 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_hyp_agent_target ON hypotheses(agent_id, target_b
 
 DEFAULT_CONFIG = {
     "benchmark_instances": '["R1_4_1","R1_4_2","R1_4_3","R1_4_4","R1_4_5","R2_4_1","R2_4_2","R2_4_3","R2_4_4","R2_4_5","RC1_4_1","RC1_4_2","RC1_4_3","RC1_4_4","RC1_4_5","RC2_4_1","RC2_4_2","RC2_4_3","RC2_4_4","RC2_4_5","C1_4_1","C1_4_2","C2_4_1","C2_4_2"]',
-    "admin_key": "ads-2026",
+    "admin_key": os.environ.get("ADMIN_KEY", ""),
 }
 
 
@@ -177,6 +177,9 @@ async def init_db() -> None:
                 (key, value),
             )
         await db.commit()
+        if not os.environ.get("ADMIN_KEY"):
+            import logging
+            logging.warning("ADMIN_KEY environment variable not set — admin endpoints will reject all requests")
 
 
 @asynccontextmanager

@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import re
+from pydantic import BaseModel, field_validator
 from typing import Literal, Optional
 import uuid
 
@@ -11,6 +12,14 @@ def improvement_pct(baseline: float, score: float) -> float:
     if baseline <= 0:
         return 0.0
     return round(((baseline - score) / baseline) * 100, 2)
+
+
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+def _strip_html(v: str) -> str:
+    if not isinstance(v, str):
+        return v
+    return _HTML_TAG_RE.sub('', v).strip()
 
 
 # ── Request models ──
@@ -39,6 +48,11 @@ class HypothesisCreate(BaseModel):
         "other",
     ]
     parent_hypothesis_id: Optional[str] = None
+
+    @field_validator('title', 'description', mode='before')
+    @classmethod
+    def sanitize_text(cls, v: str) -> str:
+        return _strip_html(v)
 
 
 class ExperimentCreate(BaseModel):
@@ -85,12 +99,22 @@ class AdminBroadcast(AdminAuth):
     message: str
     priority: Literal["normal", "high"] = "normal"
 
+    @field_validator('message', mode='before')
+    @classmethod
+    def sanitize_text(cls, v: str) -> str:
+        return _strip_html(v)
+
 
 class MessageCreate(BaseModel):
     agent_id: Optional[str] = None
     agent_name: str
     content: str
     msg_type: Literal["agent", "milestone"] = "agent"
+
+    @field_validator('agent_name', 'content', mode='before')
+    @classmethod
+    def sanitize_text(cls, v: str) -> str:
+        return _strip_html(v)
 
 
 # ── Response models ──

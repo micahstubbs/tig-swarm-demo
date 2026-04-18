@@ -11,3 +11,6 @@ Procfile
 runtime.txt
 Dockerfile.bak
 server/static/
+
+# bv (beads viewer) local config and caches
+.bv/
