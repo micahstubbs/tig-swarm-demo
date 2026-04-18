@@ -1,3 +1,75 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build & Test Commands
+
+```bash
+# Build the solver (main binary agents use)
+cargo build -r --bin tig_solver --features solver,vehicle_routing
+
+# Build evaluator (validates solutions)
+cargo build -r --bin tig_evaluator --features evaluator,vehicle_routing
+
+# Build instance generator
+cargo build -r --bin tig_generator --features generator,vehicle_routing
+
+# Run tests
+cargo test --features vehicle_routing
+
+# Run full benchmark (builds solver+evaluator, runs 24 instances in parallel, 30s timeout each)
+python3 scripts/benchmark.py
+
+# Run the coordination server locally
+cd server && pip install -r requirements.txt && uvicorn server:app --port 8080
+
+# Run the dashboard dev server
+cd dashboard && npm install && npm run dev  # localhost:5173, add ?mock=true for no-server mode
+```
+
+## Architecture
+
+Three components: a **Rust solver** (what agents optimize), a **Python/FastAPI coordination server** (tracks swarm state), and a **TypeScript/Vite dashboard** (real-time visualization).
+
+### Rust Solver (`src/`)
+
+- **Three binaries** defined in `Cargo.toml` via feature flags: `tig_solver` (solver,vehicle_routing), `tig_evaluator` (evaluator,vehicle_routing), `tig_generator` (generator)
+- **Entry points**: `main_solver.rs`, `main_evaluator.rs`, `main_generator.rs`
+- **Core module**: `src/vehicle_routing/` — `challenge.rs` (instance representation, Solomon `.txt` parsing), `solution.rs` (route representation), `solomon.rs` (I1 insertion baseline for fleet sizing)
+- **The algorithm file**: `src/vehicle_routing/algorithm/mod.rs` — the ONLY file swarm agents edit. Contains the `solve_challenge()` function that agents iteratively improve. Currently implements a hybrid ALNS metaheuristic.
+
+### Coordination Server (`server/`)
+
+- `server.py` — FastAPI app with REST + WebSocket endpoints. Manages agent registration, state (own-best lineage, inspiration), hypothesis tracking, leaderboard, and dashboard broadcast.
+- `db.py` — async SQLite layer (agents, experiments, messages tables)
+- `models.py` — Pydantic request/response models
+
+### Dashboard (`dashboard/`)
+
+- TypeScript/Vite with D3 for visualization
+- Two pages: main dashboard (routes, leaderboard, chart, stats) and ideas page (research feed)
+- WebSocket connection to server for real-time updates
+
+### Benchmark Harness (`scripts/`)
+
+- `benchmark.py` — builds solver+evaluator, runs all 24 HG 400-node instances in parallel with ThreadPoolExecutor, 30s timeout per instance, outputs JSON with score/feasibility/route data
+- `publish.py` — POSTs benchmark results + algorithm source code to the coordination server
+- Scoring: `(sum_feasible_distances + num_infeasible * 1_000_000) / num_instances` — lower is better
+
+### Datasets
+
+- `datasets/vehicle_routing/HG/` — 24 Solomon/Homberger benchmark instances (400 nodes each): R1, R2, RC1, RC2, C1, C2 categories
+
+## Key Constraints
+
+- **Agents ONLY edit `src/vehicle_routing/algorithm/mod.rs`** — no other source files
+- **Single-threaded algorithm** — no `std::thread`, `rayon`, `crossbeam`, or async within the solver. The benchmark harness parallelizes across instances.
+- **30-second timeout per instance** — algorithms must call `save_solution()` incrementally; only the last call is kept
+- **`solver` feature does NOT imply `vehicle_routing`** — both must be specified when building `tig_solver`
+- **Do NOT use the Dockerfile. Do NOT use Docker.** Run the server and dashboard directly on the host (see Build & Test Commands above). The `Dockerfile` in the repo root is for the hosted deployment only — local development and agent work must not invoke `docker build` or `docker run`.
+
+---
+
 # Swarm Agent — Automated Discovery at Scale
 
 You are an autonomous agent in a swarm collaboratively optimizing a **Vehicle Routing Problem with Time Windows (VRPTW)**. Your goal: minimize total travel distance while respecting vehicle capacity and customer time window constraints.

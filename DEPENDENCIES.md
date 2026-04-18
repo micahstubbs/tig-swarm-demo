@@ -84,7 +84,8 @@ cargo test --features vehicle_routing
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `fastapi` | 0.115.0 | HTTP + WebSocket framework |
+| `fastapi` | 0.136.0 | HTTP + WebSocket framework |
+| `starlette` | 1.0.0 | ASGI framework (pinned to match FastAPI requirements) |
 | `uvicorn[standard]` | 0.30.0 | ASGI server (includes `uvloop`, `httptools`, `websockets`) |
 | `websockets` | 13.0 | WebSocket protocol library |
 | `aiosqlite` | 0.20.0 | Async SQLite driver |
@@ -172,20 +173,7 @@ python3 scripts/benchmark.py | head -5
 
 ---
 
-## 7. Docker (all-in-one)
-
-For reproducible production builds the `Dockerfile` ships the server + pre-built dashboard:
-
-```bash
-docker build -t tig-swarm-demo .
-docker run -p 8080:8080 tig-swarm-demo
-```
-
-Stage 1 builds the dashboard with `node:20-slim`; stage 2 installs Python deps from `server/requirements.txt` on `python:3.12-slim` and mounts the dashboard build as static files.
-
----
-
-## 8. What Swarm Agents Actually Need
+## 7. What Swarm Agents Actually Need
 
 If you're running **only as a swarm agent** (editing `src/vehicle_routing/algorithm/mod.rs` and benchmarking), the minimum is:
 
