@@ -7,6 +7,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         ideas: resolve(__dirname, "ideas.html"),
+        diversity: resolve(__dirname, "diversity.html"),
+        benchmark: resolve(__dirname, "benchmark.html"),
       },
     },
   },

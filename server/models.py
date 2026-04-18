@@ -108,14 +108,6 @@ class HypothesisResponse(BaseModel):
     fingerprint: str
 
 
-class DuplicateResponse(BaseModel):
-    error: str = "duplicate_hypothesis"
-    similar_hypothesis_id: str
-    similar_title: str
-    similar_status: str
-    suggestion: str = "Consider a different angle or combine with another approach."
-
-
 class ExperimentResponse(BaseModel):
     experiment_id: str
     is_new_best: bool

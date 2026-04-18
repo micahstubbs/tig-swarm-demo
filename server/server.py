@@ -13,11 +13,11 @@ from pathlib import Path
 from models import (
     RegisterRequest, HeartbeatRequest, HypothesisCreate, ExperimentCreate,
     IterationCreate, AdminBroadcast, AdminAuth, MessageCreate,
-    AgentResponse, HypothesisResponse, DuplicateResponse,
+    AgentResponse, HypothesisResponse,
     ExperimentResponse, IterationResponse, new_id, improvement_pct,
 )
 from names import generate_agent_name, load_used_names
-from dedup import fingerprint, check_duplicate
+from dedup import fingerprint
 import db
 
 logger = logging.getLogger("swarm")
@@ -318,23 +318,18 @@ async def get_state(agent_id: str | None = None):
                 hyp_clause = "AND h.agent_id = ? AND h.target_best_experiment_id IS NULL"
                 hyp_params = [agent_id]
 
+            # "recent_hypotheses" = every attempt the agent has made against
+            # its current best. No success/fail distinction surfaced to
+            # agents: the point is "here's what you've already tried against
+            # this code, so don't repeat it."
             cursor = await conn.execute(
-                f"""SELECT h.id, h.title, h.strategy_tag, h.description, h.status
+                f"""SELECT h.id, h.title, h.strategy_tag, h.description
                     FROM hypotheses h
-                    WHERE h.status = 'failed' {hyp_clause}
+                    WHERE 1=1 {hyp_clause}
                     ORDER BY h.created_at DESC LIMIT 20""",
                 hyp_params,
             )
-            failed_hypotheses = [dict(row) for row in await cursor.fetchall()]
-
-            cursor = await conn.execute(
-                f"""SELECT h.id, h.title, h.strategy_tag, h.description, h.status
-                    FROM hypotheses h
-                    WHERE h.status = 'succeeded' {hyp_clause}
-                    ORDER BY h.created_at DESC LIMIT 10""",
-                hyp_params,
-            )
-            succeeded_hypotheses = [dict(row) for row in await cursor.fetchall()]
+            recent_hypotheses = [dict(row) for row in await cursor.fetchall()]
 
             # Inspiration on stagnation
             inspiration_code = None
@@ -373,17 +368,11 @@ async def get_state(agent_id: str | None = None):
                 "total_agents": total_agents,
                 "total_experiments": total_exp,
                 "hypotheses_count": total_hyp,
-                "failed_hypotheses": [
+                "recent_hypotheses": [
                     {"id": h["id"], "title": h["title"],
                      "strategy_tag": h["strategy_tag"],
                      "description": h["description"]}
-                    for h in failed_hypotheses
-                ],
-                "succeeded_hypotheses": [
-                    {"id": h["id"], "title": h["title"],
-                     "strategy_tag": h["strategy_tag"],
-                     "description": h["description"]}
-                    for h in succeeded_hypotheses
+                    for h in recent_hypotheses
                 ],
                 "inspiration_code": inspiration_code,
                 "inspiration_agent_name": inspiration_agent_name,
@@ -402,21 +391,11 @@ async def get_state(agent_id: str | None = None):
 
         cursor = await conn.execute(
             """SELECT h.id, h.title, h.strategy_tag, h.description,
-                      h.status, a.name as agent_name
+                      a.name as agent_name, h.agent_id, h.parent_hypothesis_id
                FROM hypotheses h JOIN agents a ON a.id = h.agent_id
-               WHERE h.status = 'failed'
-               ORDER BY h.created_at DESC LIMIT 20"""
+               ORDER BY h.created_at DESC LIMIT 30"""
         )
-        failed_hypotheses = [dict(row) for row in await cursor.fetchall()]
-
-        cursor = await conn.execute(
-            """SELECT h.id, h.title, h.strategy_tag, h.description,
-                      h.status, a.name as agent_name
-               FROM hypotheses h JOIN agents a ON a.id = h.agent_id
-               WHERE h.status = 'succeeded'
-               ORDER BY h.created_at DESC LIMIT 10"""
-        )
-        succeeded_hypotheses = [dict(row) for row in await cursor.fetchall()]
+        recent_hypotheses = [dict(row) for row in await cursor.fetchall()]
 
         served = global_best
         best_route_data = served["route_data"] if served else None
@@ -462,22 +441,12 @@ async def get_state(agent_id: str | None = None):
             }
             for e in recent_experiments
         ],
-        # Kept for dashboard compatibility; the model no longer has
-        # "active/in-flight" hypotheses, only succeeded/failed attempts.
-        "active_hypotheses": [],
-        "failed_hypotheses": [
+        "recent_hypotheses": [
             {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
-             "status": h["status"], "agent_name": h["agent_name"], "description": h["description"],
+             "agent_name": h["agent_name"], "description": h["description"],
              "parent_hypothesis_id": h.get("parent_hypothesis_id"),
              "agent_id": h.get("agent_id", "")}
-            for h in failed_hypotheses
-        ],
-        "succeeded_hypotheses": [
-            {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
-             "status": h["status"], "agent_name": h["agent_name"], "description": h["description"],
-             "parent_hypothesis_id": h.get("parent_hypothesis_id"),
-             "agent_id": h.get("agent_id", "")}
-            for h in succeeded_hypotheses
+            for h in recent_hypotheses
         ],
         "leaderboard": leaderboard,
     }
@@ -501,10 +470,8 @@ async def create_iteration(req: IterationCreate):
         prev_agent_best = await db.get_agent_best(conn, req.agent_id)
         baseline = await get_baseline_score(conn)
 
-        is_new_best = req.feasible and (
-            prev_best is None or req.score < prev_best["score"]
-        )
-        beats_own_best = req.feasible and (
+        is_new_best = prev_best is None or req.score < prev_best["score"]
+        beats_own_best = (
             prev_agent_best is None or req.score < prev_agent_best["score"]
         )
 
@@ -668,30 +635,6 @@ async def create_hypothesis(req: HypothesisCreate):
             my_best["experiment_id"] if my_best else None
         )
 
-        if target_best_experiment_id is None:
-            cursor = await conn.execute(
-                """SELECT id, title, strategy_tag, status, fingerprint
-                   FROM hypotheses
-                   WHERE agent_id = ? AND target_best_experiment_id IS NULL""",
-                (req.agent_id,),
-            )
-        else:
-            cursor = await conn.execute(
-                """SELECT id, title, strategy_tag, status, fingerprint
-                   FROM hypotheses
-                   WHERE agent_id = ? AND target_best_experiment_id = ?""",
-                (req.agent_id, target_best_experiment_id),
-            )
-        all_hyps = [dict(row) for row in await cursor.fetchall()]
-
-        dup = check_duplicate(req.title, req.strategy_tag, all_hyps)
-        if dup:
-            raise HTTPException(status_code=409, detail=DuplicateResponse(
-                similar_hypothesis_id=dup["id"],
-                similar_title=dup["title"],
-                similar_status=dup["status"],
-            ).model_dump())
-
         hyp_id = new_id()
         fp = fingerprint(req.title, req.strategy_tag)
         timestamp = now()
@@ -773,11 +716,14 @@ async def create_experiment(req: ExperimentCreate):
         prev_agent_best = await db.get_agent_best(conn, req.agent_id)
         baseline = await get_baseline_score(conn)
 
-        is_new_best = req.feasible and (prev_best is None or req.score < prev_best["score"])
+        is_new_best = prev_best is None or req.score < prev_best["score"]
         # beats_own_best: did this experiment improve the publishing agent's
         # own branch? Drives both agent_bests updates and the hypothesis
         # success/fail label — "succeeded" now means "improved my branch".
-        beats_own_best = req.feasible and (
+        # Score-only: the per-instance infeasibility penalty (1,000,000) is
+        # baked into score, so any mixed/fully-infeasible result already
+        # loses to a feasible one on score alone.
+        beats_own_best = (
             prev_agent_best is None or req.score < prev_agent_best["score"]
         )
 

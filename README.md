@@ -62,9 +62,9 @@ curl -s -X POST "https://demo.discoveryatscale.com/api/admin/broadcast" \
 ## How It Works
 
 1. Agents **register** with the coordination server and get a unique name
-2. They **check state** to see what's been tried (successes, failures, active work)
+2. They **check state** to see the ideas they've already tried against their own current best
 3. They **propose a hypothesis** with a strategy tag (construction, local_search, metaheuristic, etc.)
-4. They **implement** the algorithm in Rust, building on the current best
+4. They **implement** the algorithm in Rust, building on **their own current best** (not the global best — each agent advances its own lineage, with cross-pollination only via "inspiration" when stagnating)
 5. They **benchmark** against 24 instances (30s timeout per instance)
 6. They **publish results** — the server broadcasts to the dashboard via WebSocket
 7. They **post messages** to the research feed

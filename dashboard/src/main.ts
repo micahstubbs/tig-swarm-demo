@@ -98,9 +98,7 @@ async function loadInitialState(apiUrl: string) {
       created_at: string;
     }> = replayRes.ok ? await replayRes.json() : [];
     const hypothesisCount =
-      state.hypotheses_count ??
-      ((state.failed_hypotheses?.length || 0) +
-        (state.succeeded_hypotheses?.length || 0));
+      state.hypotheses_count ?? (state.recent_hypotheses?.length || 0);
 
     // Seed the chart with the entire trajectory, not just recent_experiments.
     chartPanel.seedHistory(replay);
@@ -177,11 +175,8 @@ async function loadInitialState(apiUrl: string) {
       });
     }
 
-    // Replay hypothesis history (no active status model: only succeeded/failed).
-    const allHyps = [
-      ...(state.succeeded_hypotheses || []),
-      ...(state.failed_hypotheses || []),
-    ];
+    // Replay hypothesis history (every attempt against the agent's current best).
+    const allHyps = state.recent_hypotheses || [];
     for (const hyp of allHyps) {
       handleMessage({
         type: "hypothesis_proposed",
@@ -194,15 +189,6 @@ async function loadInitialState(apiUrl: string) {
         parent_hypothesis_id: hyp.parent_hypothesis_id || null,
         timestamp: new Date().toISOString(),
       });
-      if (hyp.status === "succeeded" || hyp.status === "failed") {
-        handleMessage({
-          type: "hypothesis_status_changed",
-          hypothesis_id: hyp.id || "",
-          new_status: hyp.status,
-          agent_name: hyp.agent_name,
-          timestamp: new Date().toISOString(),
-        });
-      }
     }
 
     soundEnabled = true;
@@ -222,6 +208,8 @@ initWelcome();
 // ── Keyboard navigation ──
 document.addEventListener("keydown", (e) => {
   if (e.key === "2") window.location.href = "/ideas.html";
+  if (e.key === "3") window.location.href = "/diversity.html";
+  if (e.key === "4") window.location.href = "/benchmark.html";
   if (e.key === "j" || e.key === "J") toggleWelcome();
   if (e.key === "r" || e.key === "R") startReplay(getApiUrl(), handleMessage);
 });

@@ -42,6 +42,8 @@ function handleMessage(msg: WSMessage) {
 // ── Keyboard navigation ──
 document.addEventListener("keydown", (e) => {
   if (e.key === "1") window.location.href = "/";
+  if (e.key === "3") window.location.href = "/diversity.html";
+  if (e.key === "4") window.location.href = "/benchmark.html";
 });
 
 // ── Fetch initial state ──
@@ -51,11 +53,8 @@ async function loadInitialState(apiUrl: string) {
     if (!res.ok) return;
     const state = await res.json();
 
-    // Replay all hypothesis outcomes (no active status model).
-    const allHyps = [
-      ...(state.failed_hypotheses || []),
-      ...(state.succeeded_hypotheses || []),
-    ];
+    // Replay all hypothesis outcomes.
+    const allHyps = state.recent_hypotheses || [];
 
     for (const h of allHyps) {
       handleMessage({
@@ -69,16 +68,6 @@ async function loadInitialState(apiUrl: string) {
         parent_hypothesis_id: h.parent_hypothesis_id || null,
         timestamp: new Date().toISOString(),
       });
-      // Apply status if not active
-      if (h.status === "succeeded" || h.status === "failed") {
-        handleMessage({
-          type: "hypothesis_status_changed",
-          hypothesis_id: h.id,
-          new_status: h.status,
-          agent_name: h.agent_name,
-          timestamp: new Date().toISOString(),
-        });
-      }
     }
 
     console.log(`[Ideas] Loaded ${allHyps.length} hypotheses`);
