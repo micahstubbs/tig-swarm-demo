@@ -131,6 +131,21 @@ Same adjustment for the SA fine-tuning phase: 0.9998 → 0.99997.
 
 ---
 
+## 2026-04-18T22:31 - Cached benchmark baselines must match the current commit
+
+**Problem**: Ran the `/wb` worktree-bench skill for issue `tig-swarm-demo-5u3`. `docs/benchmark-history.jsonl` had a recent entry (13 minutes old, score 7720.79) that at first looked reusable as the baseline. But it was recorded on commit `c0f987a`, while `main` had advanced to `bc6be23` — a diff of 342 lines in `src/vehicle_routing/algorithm/mod.rs`. A fresh run of HEAD scored 7346.17, a ~5% drift from the cached number. Using the cached baseline would have reported a misleading delta.
+
+**Root Cause**: "Recent" is not the same as "same code". The benchmark-history file tracks scores over time; each row is only valid for the exact commit it was taken on. A recent entry on a stale commit is worse than no entry, because it tempts you to skip the re-measurement.
+
+**Lesson**: For any A/B benchmark comparison, the baseline must be re-measured on the exact code state the experiment branches from. The `/wb` skill encodes this rule ("last entry less than 1 hour old AND same commit") — but it is easy to read quickly and act on only the "1 hour old" half. The "same commit" half is load-bearing.
+
+**Prevention**:
+- Always `git diff <baseline-commit>..HEAD -- <algorithm-file>` before reusing a cached baseline. Any non-empty diff invalidates it.
+- When writing skills that cache benchmark results, include the commit SHA in the result file and make the reuse condition a strict AND on age-and-commit.
+- When reporting deltas, state the baseline's provenance ("fresh run on bc6be23", not just "baseline 7346.17") so reviewers can verify the comparison is apples-to-apples.
+
+---
+
 ## 2026-04-18T15:30 - Benchmark noise dwarfs single-run optimizer deltas
 
 **Problem**: Added SWAP* (a known-strong VRPTW neighborhood) to the SA operator mix and saw a "+1.29% regression" on the first benchmark comparison. Reflex was to call the experiment failed and revert. But a second pair of runs showed the opposite sign, and three baseline-only runs spanned 7354–7548 (Δ ≈ 2.6%) — wider than the claimed effect.
