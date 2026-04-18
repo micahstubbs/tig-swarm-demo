@@ -1,0 +1,18 @@
+[Unit]
+Description=tig-swarm-demo FastAPI server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/m/wk/tig-swarm-demo/server
+EnvironmentFile=/etc/tig-swarm-demo/env
+ExecStart=/usr/bin/env uvicorn server:app --host 127.0.0.1 --port 8090
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+OOMScoreAdjust=200
+
+[Install]
+WantedBy=default.target
