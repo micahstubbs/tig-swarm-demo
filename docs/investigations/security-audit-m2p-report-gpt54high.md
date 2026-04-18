@@ -8,6 +8,19 @@ This report converts the 2026-04-18 security audit into a Beads execution plan. 
 
 Source audit: [2026-04-18-1409-security-audit-gpt54high.md](./2026-04-18-1409-security-audit-gpt54high.md)
 
+## Status Update
+
+This report is historical planning context, not the current tracker state.
+
+- Most audit items were closed in Beads after subsequent implementation work.
+- After the host-execution analysis, `tig-swarm-demo-fa5` and its parent epic
+  `tig-swarm-demo-jxg` were reopened because protecting host machines requires
+  authenticated agent-private `/api/state` reads, not just authenticated write
+  routes.
+- Public dashboard/history visibility remains an accepted tradeoff, but
+  agent-private code-bearing state is no longer treated as part of that
+  acceptance.
+
 ## Backlog Structure
 
 The backlog now consists of three remediation tracks:

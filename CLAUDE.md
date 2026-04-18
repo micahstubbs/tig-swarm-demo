@@ -78,6 +78,7 @@ Port 8080 is taken by another process on this machine — use 8090 for local dev
 - **30-second timeout per instance** — algorithms must call `save_solution()` incrementally; only the last call is kept
 - **`solver` feature does NOT imply `vehicle_routing`** — both must be specified when building `tig_solver`
 - **Do NOT use the Dockerfile. Do NOT use Docker.** Run the server and dashboard directly on the host (see Build & Test Commands above). The `Dockerfile` in the repo root is for the hosted deployment only — local development and agent work must not invoke `docker build` or `docker run`.
+- **Host-protection invariant:** `best_algorithm_code` returned by the coordination server is written into `src/vehicle_routing/algorithm/mod.rs` and then compiled/executed locally. For any deployment that protects participant hosts, agent-private `/api/state` reads belong to the authentication boundary just like write endpoints.
 
 ---
 
