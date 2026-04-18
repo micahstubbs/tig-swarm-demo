@@ -1,6 +1,7 @@
 import json
 import asyncio
 import logging
+import os
 import random
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
@@ -83,6 +84,15 @@ async def verify_admin(req: AdminAuth) -> None:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
 
+async def verify_agent(conn, agent_id: str, token: str | None) -> None:
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing agent_token")
+    cur = await conn.execute("SELECT agent_token FROM agents WHERE id = ?", (agent_id,))
+    row = await cur.fetchone()
+    if row is None or row["agent_token"] is None or row["agent_token"] != token:
+        raise HTTPException(status_code=401, detail="Invalid agent credentials")
+
+
 async def get_agent_name(conn, agent_id: str) -> str:
     cursor = await conn.execute("SELECT name FROM agents WHERE id = ?", (agent_id,))
     row = await cursor.fetchone()
@@ -134,11 +144,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Swarm Coordination Server", lifespan=lifespan)
 
+_cors_origins_env = os.environ.get("CORS_ORIGINS", "").strip()
+if _cors_origins_env:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+else:
+    _cors_origins = ["https://demo.discoveryatscale.com"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # Static dashboard mounted after all routes (see bottom of file)
@@ -201,12 +217,13 @@ async def periodic_stats():
 async def register_agent(req: RegisterRequest):
     agent_id = new_id()
     agent_name = generate_agent_name()
+    agent_token = new_id() + new_id()
     timestamp = now()
 
     async with db.connect() as conn:
         await conn.execute(
-            "INSERT INTO agents (id, name, registered_at, last_heartbeat, status) VALUES (?, ?, ?, ?, ?)",
-            (agent_id, agent_name, timestamp, timestamp, "idle"),
+            "INSERT INTO agents (id, name, registered_at, last_heartbeat, status, agent_token) VALUES (?, ?, ?, ?, ?, ?)",
+            (agent_id, agent_name, timestamp, timestamp, "idle", agent_token),
         )
         await conn.commit()
         config = await db.get_config(conn)
@@ -222,6 +239,7 @@ async def register_agent(req: RegisterRequest):
         agent_id=agent_id,
         agent_name=agent_name,
         registered_at=timestamp,
+        agent_token=agent_token,
         config={
             "heartbeat_interval_seconds": 30,
             "benchmark_instances": json.loads(config.get("benchmark_instances", "[]")),
@@ -233,6 +251,7 @@ async def register_agent(req: RegisterRequest):
 async def heartbeat(agent_id: str, req: HeartbeatRequest):
     timestamp = now()
     async with db.connect() as conn:
+        await verify_agent(conn, agent_id, req.agent_token)
         await conn.execute(
             "UPDATE agents SET last_heartbeat = ?, status = ? WHERE id = ?",
             (timestamp, req.status, agent_id),
@@ -464,6 +483,7 @@ async def create_iteration(req: IterationCreate):
     fp = fingerprint(req.title, req.strategy_tag)
 
     async with db.connect() as conn:
+        await verify_agent(conn, req.agent_id, req.agent_token)
         await conn.execute("BEGIN IMMEDIATE")
 
         prev_best = await db.get_global_best(conn)
@@ -630,6 +650,7 @@ async def create_iteration(req: IterationCreate):
 @app.post("/api/hypotheses")
 async def create_hypothesis(req: HypothesisCreate):
     async with db.connect() as conn:
+        await verify_agent(conn, req.agent_id, req.agent_token)
         my_best = await db.get_agent_best(conn, req.agent_id)
         target_best_experiment_id = (
             my_best["experiment_id"] if my_best else None
@@ -675,7 +696,8 @@ async def create_hypothesis(req: HypothesisCreate):
 
 
 @app.get("/api/hypotheses")
-async def list_hypotheses(status: str | None = None, strategy_tag: str | None = None):
+async def list_hypotheses(status: str | None = None, strategy_tag: str | None = None, limit: int = 100):
+    limit = max(1, min(limit, 500))
     async with db.connect() as conn:
         query = "SELECT h.*, a.name as agent_name FROM hypotheses h JOIN agents a ON a.id = h.agent_id WHERE 1=1"
         params = []
@@ -685,7 +707,8 @@ async def list_hypotheses(status: str | None = None, strategy_tag: str | None = 
         if strategy_tag:
             query += " AND h.strategy_tag = ?"
             params.append(strategy_tag)
-        query += " ORDER BY h.created_at DESC"
+        query += " ORDER BY h.created_at DESC LIMIT ?"
+        params.append(limit)
         cursor = await conn.execute(query, params)
         return [dict(row) for row in await cursor.fetchall()]
 
@@ -701,6 +724,7 @@ async def create_experiment(req: ExperimentCreate):
     route_data_json = json.dumps(req.route_data) if req.route_data else None
 
     async with db.connect() as conn:
+        await verify_agent(conn, req.agent_id, req.agent_token)
         # Take the SQLite write lock up front (BEGIN IMMEDIATE) so the
         # read→decide→write block below runs atomically with respect to
         # concurrent publishes. Without this, two agents can both read the
@@ -905,6 +929,8 @@ async def create_message(req: MessageCreate):
     msg_id = new_id()
     timestamp = now()
     async with db.connect() as conn:
+        if req.agent_id:
+            await verify_agent(conn, req.agent_id, req.agent_token)
         await conn.execute(
             "INSERT INTO messages (id, agent_id, agent_name, content, msg_type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (msg_id, req.agent_id, req.agent_name, req.content, req.msg_type, timestamp),
@@ -926,6 +952,7 @@ async def create_message(req: MessageCreate):
 
 @app.get("/api/messages")
 async def list_messages(limit: int = 50):
+    limit = max(1, min(limit, 500))
     async with db.connect() as conn:
         cursor = await conn.execute(
             "SELECT * FROM messages ORDER BY created_at DESC LIMIT ?", (limit,)
@@ -938,14 +965,17 @@ async def list_messages(limit: int = 50):
 # ── Diversity ──
 
 @app.get("/api/diversity")
-async def get_diversity():
+async def get_diversity(limit: int = 200):
+    limit = max(1, min(limit, 1000))
     async with db.connect() as conn:
         cursor = await conn.execute(
             """SELECT ab.agent_id, a.name as agent_name, ab.algorithm_code
                FROM agent_bests ab
                JOIN agents a ON a.id = ab.agent_id
                WHERE ab.feasible = 1
-               ORDER BY ab.score ASC"""
+               ORDER BY ab.score ASC
+               LIMIT ?""",
+            (limit,),
         )
         rows = [dict(row) for row in await cursor.fetchall()]
 
@@ -985,10 +1015,11 @@ async def get_diversity():
 # ── Replay ──
 
 @app.get("/api/replay")
-async def get_replay():
+async def get_replay(limit: int = 500):
+    limit = max(1, min(limit, 2000))
     async with db.connect() as conn:
         cursor = await conn.execute(
-            "SELECT * FROM best_history ORDER BY created_at ASC"
+            "SELECT * FROM best_history ORDER BY created_at ASC LIMIT ?", (limit,)
         )
         rows = [dict(row) for row in await cursor.fetchall()]
     return [

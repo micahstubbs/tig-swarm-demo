@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS messages (
     agent_name TEXT NOT NULL,
     content TEXT NOT NULL,
     msg_type TEXT DEFAULT 'agent',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 
 CREATE TABLE IF NOT EXISTS best_history (
@@ -87,7 +88,9 @@ CREATE TABLE IF NOT EXISTS best_history (
     agent_name TEXT NOT NULL,
     score REAL NOT NULL,
     route_data TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (experiment_id) REFERENCES experiments(id),
+    FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 """
 
@@ -112,6 +115,7 @@ DEFAULT_CONFIG = {
 
 async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA foreign_keys=ON")
         # 1) Tables first. All table DDL is IF NOT EXISTS so fresh and
         #    upgraded databases both work.
         await db.executescript(SCHEMA)
@@ -130,6 +134,7 @@ async def init_db() -> None:
             "ALTER TABLE experiments ADD COLUMN delta_vs_best_pct REAL",
             "ALTER TABLE experiments ADD COLUMN delta_vs_own_best_pct REAL",
             "ALTER TABLE experiments ADD COLUMN beats_own_best INTEGER DEFAULT 0",
+            "ALTER TABLE agents ADD COLUMN agent_token TEXT",
         ):
             try:
                 await db.execute(stmt)
@@ -187,6 +192,7 @@ async def connect():
     """Context manager for DB connections — ensures cleanup on error."""
     conn = await aiosqlite.connect(DB_PATH)
     conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
     finally:

@@ -1,5 +1,5 @@
 import re
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal, Optional
 import uuid
 
@@ -25,18 +25,19 @@ def _strip_html(v: str) -> str:
 # ── Request models ──
 
 class RegisterRequest(BaseModel):
-    client_version: str = "1.0"
+    client_version: str = Field(default="1.0", max_length=50)
 
 
 class HeartbeatRequest(BaseModel):
     status: Literal["idle", "working"] = "working"
-    current_hypothesis_id: Optional[str] = None
+    current_hypothesis_id: Optional[str] = Field(default=None, max_length=50)
+    agent_token: Optional[str] = None
 
 
 class HypothesisCreate(BaseModel):
-    agent_id: str
-    title: str
-    description: str
+    agent_id: str = Field(max_length=50)
+    title: str = Field(max_length=200)
+    description: str = Field(max_length=2000)
     strategy_tag: Literal[
         "construction",
         "local_search",
@@ -47,7 +48,8 @@ class HypothesisCreate(BaseModel):
         "data_structure",
         "other",
     ]
-    parent_hypothesis_id: Optional[str] = None
+    parent_hypothesis_id: Optional[str] = Field(default=None, max_length=50)
+    agent_token: Optional[str] = Field(default=None, max_length=100)
 
     @field_validator('title', 'description', mode='before')
     @classmethod
@@ -56,22 +58,23 @@ class HypothesisCreate(BaseModel):
 
 
 class ExperimentCreate(BaseModel):
-    agent_id: str
-    hypothesis_id: Optional[str] = None
-    algorithm_code: str = ""
+    agent_id: str = Field(max_length=50)
+    hypothesis_id: Optional[str] = Field(default=None, max_length=50)
+    algorithm_code: str = Field(default="", max_length=500000)
     score: float
     feasible: bool = True
     num_vehicles: int = 0
     total_distance: float = 0.0
     runtime_seconds: float = 0.0
-    notes: str = ""
+    notes: str = Field(default="", max_length=2000)
     route_data: Optional[dict] = None
+    agent_token: Optional[str] = Field(default=None, max_length=100)
 
 
 class IterationCreate(BaseModel):
-    agent_id: str
-    title: str
-    description: str = ""
+    agent_id: str = Field(max_length=50)
+    title: str = Field(max_length=200)
+    description: str = Field(default="", max_length=2000)
     strategy_tag: Literal[
         "construction",
         "local_search",
@@ -82,21 +85,22 @@ class IterationCreate(BaseModel):
         "data_structure",
         "other",
     ] = "other"
-    algorithm_code: str = ""
+    algorithm_code: str = Field(default="", max_length=500000)
     score: float
     feasible: bool = True
     num_vehicles: int = 0
     total_distance: float = 0.0
-    notes: str = ""
+    notes: str = Field(default="", max_length=2000)
     route_data: Optional[dict] = None
+    agent_token: Optional[str] = Field(default=None, max_length=100)
 
 
 class AdminAuth(BaseModel):
-    admin_key: str
+    admin_key: str = Field(max_length=200)
 
 
 class AdminBroadcast(AdminAuth):
-    message: str
+    message: str = Field(max_length=2000)
     priority: Literal["normal", "high"] = "normal"
 
     @field_validator('message', mode='before')
@@ -106,10 +110,11 @@ class AdminBroadcast(AdminAuth):
 
 
 class MessageCreate(BaseModel):
-    agent_id: Optional[str] = None
-    agent_name: str
-    content: str
+    agent_id: Optional[str] = Field(default=None, max_length=50)
+    agent_name: str = Field(max_length=100)
+    content: str = Field(max_length=2000)
     msg_type: Literal["agent", "milestone"] = "agent"
+    agent_token: Optional[str] = Field(default=None, max_length=100)
 
     @field_validator('agent_name', 'content', mode='before')
     @classmethod
@@ -124,6 +129,7 @@ class AgentResponse(BaseModel):
     agent_name: str
     registered_at: str
     config: dict
+    agent_token: str
 
 
 class HypothesisResponse(BaseModel):
