@@ -102,3 +102,29 @@ text = re.sub(r'```[^\n]*\n.*?```',
 - Avoid `&` inside inline code spans and fenced code blocks. For Rust borrow syntax in prose snippets, use `ref` or elide — it rarely adds comprehension.
 - If m2p fails with Unicode/alignment errors and the auto-fix loop burns through levels, run it once with `--no-verify` and intercept the generated `.tex` via `python -c "import m2p; m2p.generate_latex(m2p.parse_markdown(open('...').read()))"` so you can see the exact failing line.
 - Long-term fix at the tool level: `m2p.py` should either switch to `lualatex`/`xelatex` (Unicode-native) or add a canonicalization pass that maps common math Unicode to LaTeX commands. Neither exists yet.
+
+---
+
+## 2026-04-18T22:00 - SA/ALNS cooling rate must scale with time budget
+
+**Problem**: After extending the VRPTW solver's time budget from 4.5s to 27s (~6x), the algorithm should improve proportionally with the extra search time. But if the cooling rate is left unchanged, the simulated annealing temperature decays to near-zero far too early, and the remaining ~80% of the budget is wasted on greedy-only search that can't escape local optima.
+
+**Root Cause**: The cooling rate `c` is tuned to reach a target final temperature after N iterations. If the iteration count scales by factor k (from a longer time budget), the same cooling rate produces `c^(kN)` = `(c^N)^k`, which is exponentially smaller than the intended final temperature. For example, with c=0.9995 and 6x more iterations, the final temperature is `(0.9995^N)^6` — essentially zero if the original final temp was already small.
+
+**Lesson**: When scaling a metaheuristic's time budget by factor k, adjust the cooling rate to `c_new = c_old^(1/k)`. This preserves the same annealing schedule (same initial and final temperatures) stretched over the longer run. The formula: `c_new = exp(ln(c_old) / k)`.
+
+**Code Issue**:
+```rust
+// Before — tuned for 3.2s ALNS phase
+let cooling = 0.9995;
+
+// After — tuned for 19s ALNS phase (~6x longer)
+// c_new = 0.9995^(1/6) ≈ 0.99993
+let cooling = 0.99993;
+```
+
+Same adjustment for the SA fine-tuning phase: 0.9998 → 0.99997.
+
+**Solution**: Applied `c^(1/k)` scaling to both cooling rates. Also scaled the ALNS weight-update segment length (80 → 500) and reheat interval (1200 → 8000) proportionally so those mechanisms fire at the same relative frequency in the search.
+
+**Prevention**: Whenever changing a solver's time budget, audit all time-dependent parameters: cooling rates, segment lengths, reheat intervals, stagnation thresholds. A checklist: `cooling`, `segment_length`, `reheat_every`, `stag_threshold`, `initial_temperature`. Scale each by the budget ratio.
