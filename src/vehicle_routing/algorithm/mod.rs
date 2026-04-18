@@ -216,17 +216,16 @@ pub fn solve_challenge(
     while Instant::now() < deadline {
         let op = if routes.len() > fleet {
             let r = rand_lcg(&mut rng) % 10;
-            if r < 5 { 1 } else if r < 7 { 4 } else { (rand_lcg(&mut rng) % 3) as u64 }
+            if r < 5 { 1 } else if r < 7 { 0 } else { (rand_lcg(&mut rng) % 4) as u64 }
         } else {
-            rand_lcg(&mut rng) % 5
+            rand_lcg(&mut rng) % 4
         };
 
         let result = match op {
-            0 => try_intra_2opt(&routes, &route_dists, challenge, &mut rng, dm),
+            0 => try_two_opt_star(&routes, &route_dists, challenge, &mut rng, dm, fleet, fleet_penalty),
             1 => try_relocate(&routes, &route_dists, challenge, &mut rng, dm, fleet, fleet_penalty),
             2 => try_exchange(&routes, &route_dists, challenge, &mut rng, dm),
-            3 => try_or_opt(&routes, challenge, &mut rng),
-            _ => try_cross_2opt(&routes, challenge, &mut rng),
+            _ => try_or_opt(&routes, challenge, &mut rng),
         };
 
         match result {
@@ -515,20 +514,37 @@ enum SaResult {
     Full(Vec<Vec<usize>>),
 }
 
-fn try_intra_2opt(routes: &[Vec<usize>], rd: &[i32], ch: &Challenge, rng: &mut u64, dm: &[Vec<i32>]) -> SaResult {
-    if routes.is_empty() { return SaResult::Failed; }
-    let ri = (rand_lcg(rng) as usize) % routes.len();
-    let route = &routes[ri];
-    if route.len() < 4 { return SaResult::Failed; }
-    let n = route.len();
-    let i = 1 + (rand_lcg(rng) as usize) % (n - 3);
-    let j = (i + 1 + (rand_lcg(rng) as usize) % (n - 1 - i)).min(n - 2);
-    let mut nr = route.clone();
-    nr[i..=j].reverse();
-    if !is_feasible(&nr, ch) { return SaResult::Failed; }
-    let nd = route_dist(&nr, dm);
-    let delta = (nd - rd[ri]) as i64;
-    SaResult::Delta { delta_pen: delta, apply: Box::new(move |rs: &mut Vec<Vec<usize>>, ds: &mut Vec<i32>| { rs[ri] = nr; ds[ri] = nd; }) }
+fn try_two_opt_star(routes: &[Vec<usize>], rd: &[i32], ch: &Challenge, rng: &mut u64, dm: &[Vec<i32>], fleet: usize, fp: i64) -> SaResult {
+    if routes.len() < 2 { return SaResult::Failed; }
+    let r1 = (rand_lcg(rng) as usize) % routes.len();
+    let r2 = loop { let d = (rand_lcg(rng) as usize) % routes.len(); if d != r1 { break d; } };
+    if routes[r1].len() <= 2 || routes[r2].len() <= 2 { return SaResult::Failed; }
+    let i = 1 + (rand_lcg(rng) as usize) % (routes[r1].len() - 2);
+    let j = 1 + (rand_lcg(rng) as usize) % (routes[r2].len() - 2);
+
+    let mut nr1: Vec<usize> = routes[r1][..=i].to_vec();
+    nr1.extend_from_slice(&routes[r2][j+1..]);
+    let mut nr2: Vec<usize> = routes[r2][..=j].to_vec();
+    nr2.extend_from_slice(&routes[r1][i+1..]);
+
+    let l1: i32 = nr1.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum();
+    let l2: i32 = nr2.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum();
+    if l1 > ch.max_capacity || l2 > ch.max_capacity { return SaResult::Failed; }
+    if !is_feasible(&nr1, ch) || !is_feasible(&nr2, ch) { return SaResult::Failed; }
+
+    let nd1 = route_dist(&nr1, dm);
+    let nd2 = route_dist(&nr2, dm);
+    let mut delta = nd1 as i64 + nd2 as i64 - rd[r1] as i64 - rd[r2] as i64;
+
+    let empty = (if nr1.len() <= 2 { 1i64 } else { 0 }) + (if nr2.len() <= 2 { 1 } else { 0 });
+    if routes.len() > fleet && empty > 0 { delta -= empty * fp; }
+
+    SaResult::Delta { delta_pen: delta, apply: Box::new(move |rs: &mut Vec<Vec<usize>>, ds: &mut Vec<i32>| {
+        rs[r1] = nr1; ds[r1] = nd1;
+        rs[r2] = nr2; ds[r2] = nd2;
+        let mut idx = 0;
+        while idx < rs.len() { if rs[idx].len() <= 2 { rs.remove(idx); ds.remove(idx); } else { idx += 1; } }
+    }) }
 }
 
 fn try_relocate(routes: &[Vec<usize>], rd: &[i32], ch: &Challenge, rng: &mut u64, dm: &[Vec<i32>], fleet: usize, fp: i64) -> SaResult {
@@ -612,24 +628,6 @@ fn try_or_opt(routes: &[Vec<usize>], ch: &Challenge, rng: &mut u64) -> SaResult 
 
     if nr[src].len() > 2 && !is_feasible(&nr[src], ch) { return SaResult::Failed; }
     if !is_feasible(&nr[ed], ch) { return SaResult::Failed; }
-    nr.retain(|r| r.len() > 2);
-    SaResult::Full(nr)
-}
-
-fn try_cross_2opt(routes: &[Vec<usize>], ch: &Challenge, rng: &mut u64) -> SaResult {
-    if routes.len() < 2 { return SaResult::Failed; }
-    let r1 = (rand_lcg(rng) as usize) % routes.len();
-    let r2 = (rand_lcg(rng) as usize) % routes.len();
-    if r1 == r2 || routes[r1].len() <= 2 || routes[r2].len() <= 2 { return SaResult::Failed; }
-    let c1 = 1 + (rand_lcg(rng) as usize) % (routes[r1].len() - 2);
-    let c2 = 1 + (rand_lcg(rng) as usize) % (routes[r2].len() - 2);
-    let mut nr1: Vec<usize> = routes[r1][..=c1].to_vec(); nr1.extend_from_slice(&routes[r2][c2+1..]);
-    let mut nr2: Vec<usize> = routes[r2][..=c2].to_vec(); nr2.extend_from_slice(&routes[r1][c1+1..]);
-    let l1: i32 = nr1.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum();
-    let l2: i32 = nr2.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum();
-    if l1 > ch.max_capacity || l2 > ch.max_capacity { return SaResult::Failed; }
-    if !is_feasible(&nr1, ch) || !is_feasible(&nr2, ch) { return SaResult::Failed; }
-    let mut nr = routes.to_vec(); nr[r1] = nr1; nr[r2] = nr2;
     nr.retain(|r| r.len() > 2);
     SaResult::Full(nr)
 }
@@ -732,33 +730,45 @@ fn greedy_local_search(routes: &mut Vec<Vec<usize>>, ch: &Challenge, deadline: &
     loop {
         if Instant::now() >= *deadline { break; }
         let mut any = false;
-        for r in 0..routes.len() {
-            if two_opt_route(&mut routes[r], ch) { any = true; }
-            if Instant::now() >= *deadline { return; }
-        }
+        if two_opt_star_pass(routes, ch) { any = true; }
+        if Instant::now() >= *deadline { return; }
         if greedy_relocate(routes, ch) { any = true; }
         if !any { break; }
     }
 }
 
-fn two_opt_route(route: &mut Vec<usize>, ch: &Challenge) -> bool {
-    let n = route.len();
-    if n < 4 { return false; }
+fn two_opt_star_pass(routes: &mut Vec<Vec<usize>>, ch: &Challenge) -> bool {
     let dm = &ch.distance_matrix;
-    let mut improved = false;
-    let mut changed = true;
-    while changed {
-        changed = false;
-        'seg: for i in 1..n-2 {
-            for j in i+1..n-1 {
-                if dm[route[i-1]][route[j]] + dm[route[i]][route[j+1]] < dm[route[i-1]][route[i]] + dm[route[j]][route[j+1]] {
-                    let mut c = route.clone(); c[i..=j].reverse();
-                    if is_feasible(&c, ch) { *route = c; improved = true; changed = true; break 'seg; }
+    let nr = routes.len();
+    if nr < 2 { return false; }
+    for r1 in 0..nr {
+        for r2 in (r1+1)..nr {
+            if routes[r1].len() <= 2 || routes[r2].len() <= 2 { continue; }
+            for i in 1..routes[r1].len()-1 {
+                for j in 1..routes[r2].len()-1 {
+                    let old_cost = dm[routes[r1][i]][routes[r1][i+1]] + dm[routes[r2][j]][routes[r2][j+1]];
+                    let new_cost = dm[routes[r1][i]][routes[r2][j+1]] + dm[routes[r2][j]][routes[r1][i+1]];
+                    if new_cost >= old_cost { continue; }
+
+                    let mut nr1: Vec<usize> = routes[r1][..=i].to_vec();
+                    nr1.extend_from_slice(&routes[r2][j+1..]);
+                    let mut nr2: Vec<usize> = routes[r2][..=j].to_vec();
+                    nr2.extend_from_slice(&routes[r1][i+1..]);
+
+                    let l1: i32 = nr1.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum();
+                    let l2: i32 = nr2.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum();
+                    if l1 > ch.max_capacity || l2 > ch.max_capacity { continue; }
+                    if !is_feasible(&nr1, ch) || !is_feasible(&nr2, ch) { continue; }
+
+                    routes[r1] = nr1;
+                    routes[r2] = nr2;
+                    routes.retain(|r| r.len() > 2);
+                    return true;
                 }
             }
         }
     }
-    improved
+    false
 }
 
 fn greedy_relocate(routes: &mut Vec<Vec<usize>>, ch: &Challenge) -> bool {
