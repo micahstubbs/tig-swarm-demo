@@ -1,0 +1,581 @@
+\documentclass[twocolumn,10pt,letterpaper]{article}
+
+% -- Page geometry --
+\usepackage[
+  top=0.85in,
+  bottom=0.75in,
+  left=0.65in,
+  right=0.65in,
+  columnsep=0.25in
+]{geometry}
+
+% -- Beautiful typography: Century Schoolbook --
+\usepackage[T1]{fontenc}
+\usepackage{tgschola}              % TeX Gyre Schola (Century Schoolbook)
+\usepackage[scaled=0.82]{beramono} % Bera Mono for code
+\usepackage{microtype}             % Microtypographic refinements
+\usepackage{setspace}              % Line spacing control
+\setstretch{1.08}                  % Slightly open leading for readability
+
+% -- Packages --
+\usepackage{xurl}        % Allow URL breaks at any character (load before hyperref)
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{booktabs}    % Professional tables
+\usepackage{tabularx}    % Width-constrained tables
+\usepackage{enumitem}    % List customization
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage{balance}
+\usepackage{stfloats}    % Enable [h] placement for table* in two-column layout
+\usepackage{titlesec}    % Section heading customization
+\usepackage{listings}    % Code blocks with line wrapping
+
+% -- Paragraph spacing (no indent, modest skip) --
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em plus 0.1em minus 0.05em}
+\setlength{\emergencystretch}{3em}  % Extra stretch to avoid overfull hboxes in narrow columns
+
+% -- Code listings with line wrapping --
+\lstset{
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  breakatwhitespace=false,
+  breakautoindent=true,
+  postbreak=\mbox{\textcolor{accentrule}{$\hookrightarrow$}\space},
+  columns=fullflexible,
+  keepspaces=true,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codebg},
+  framesep=3pt,
+  aboveskip=0.5em,
+  belowskip=0.5em,
+  xleftmargin=4pt,
+  xrightmargin=0pt,
+}
+
+% -- Colors --
+\definecolor{linkblue}{HTML}{1D4ED8}
+\definecolor{headergray}{HTML}{1F2937}
+\definecolor{rulegray}{HTML}{D1D5DB}
+\definecolor{titlebg}{HTML}{111827}
+\definecolor{accentrule}{HTML}{6B7280}
+\definecolor{brandred}{HTML}{8B2635}
+\definecolor{codebg}{HTML}{F3F4F6}    % Very light gray for code backgrounds
+
+% -- Hyperlinks --
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkblue,
+    urlcolor=linkblue,
+    citecolor=linkblue,
+    pdfstartview=FitH
+}
+
+% -- Section numbering: Roman > Alph > Arabic > alph, no decimals --
+\renewcommand{\thesection}{\Roman{section}}
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\renewcommand{\thesubsubsection}{\arabic{subsubsection}}
+\renewcommand{\theparagraph}{\alph{paragraph}}
+\makeatletter
+\@addtoreset{subsection}{section}
+\@addtoreset{subsubsection}{subsection}
+\@addtoreset{paragraph}{subsubsection}
+\makeatother
+
+% -- Section headings --
+\titleformat{\section}
+  {\large\bfseries\color{titlebg}}
+  {\thesection.}{0.5em}{}
+  [\vspace{-0.3em}{\color{accentrule}\rule{\columnwidth}{0.5pt}}]
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{headergray}}
+  {\thesubsection.}{0.4em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries\itshape\color{headergray}}
+  {\thesubsubsection.}{0.4em}{}
+\titleformat{\paragraph}[runin]
+  {\small\bfseries\color{headergray}}
+  {\theparagraph)}{0.4em}{}[.\hspace{0.4em}]
+\titlespacing*{\section}{0pt}{1.0em}{0.35em}
+\titlespacing*{\subsection}{0pt}{0.75em}{0.2em}
+\titlespacing*{\subsubsection}{0pt}{0.55em}{0.15em}
+\titlespacing*{\paragraph}{0pt}{0.4em}{0em}
+
+% -- Lists: compact, elegant --
+\setlist{nosep, leftmargin=1.1em, topsep=0.2em, itemsep=0.05em}
+\setlist[itemize]{label={\small\textcolor{accentrule}{\textbullet}}}
+\setlist[enumerate]{label={\small\textcolor{headergray}{\arabic*.}}}
+
+% -- Tables: tighter, small text --
+\renewcommand{\arraystretch}{1.15}
+
+% -- Header/footer (pages 2+) --
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.3pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\footnotesize\color{headergray}\textit{VRPTW GitHub Projects and Techniques for Benchmark Optimization}}
+\renewcommand{\footrulewidth}{0.3pt}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height \footrulewidth\hfill}}
+% Brand mark footer: CaseMirror wordmark left, page number right (both burgundy)
+\fancyfoot[L]{\footnotesize\textbf{\color{headergray}CaseMirror}}
+\fancyfoot[R]{\footnotesize\color{headergray}\thepage}
+
+% -- Page 1 style: footer only, no header rule --
+\fancypagestyle{firstpage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0.3pt}%
+  \renewcommand{\footrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height 0.3pt\hfill}}%
+  \fancyfoot[L]{\footnotesize\textbf{\color{headergray}CaseMirror}}%
+  \fancyfoot[R]{\footnotesize\color{headergray}\thepage}%
+}
+
+% -- Column rule --
+\setlength{\columnseprule}{0.15pt}
+\renewcommand{\columnseprulecolor}{\color{rulegray}}
+
+% -- Title --
+\title{\vspace{-1.8em}\LARGE\bfseries\color{titlebg} VRPTW GitHub Projects and Techniques for Benchmark Optimization\vspace{-0.3em}}
+\author{CaseMirror Research \\ \small\itshape\href{https://casemirror.ai}{\textcolor{headergray}{casemirror.ai}}}
+\date{{\small\color{headergray} \today}}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{firstpage}
+\vspace{-0.5em}
+
+
+\textbf{Generated:} 2026-04-18
+
+\textbf{Topic:} Open-source projects, frameworks, and techniques on GitHub that can improve scores on the TIG VRPTW benchmark (400-node Homberger instances, 30-second single-threaded timeout)
+
+
+\subsection{Executive Summary}
+
+This report catalogs GitHub repositories and state-of-the-art techniques relevant to improving scores on the TIG swarm demo VRPTW benchmark. The most immediately actionable finding is that the \textbf{TIG monorepo itself} (tig-foundation/tig-monorepo) contains 29 community-submitted Rust algorithm implementations using the identical \texttt{solve\_challenge()} function signature, including a full Hybrid Genetic Search (HGS) implementation by Thibaut Vidal. Beyond direct solver implementations, a thriving ecosystem of \textbf{LLM-powered evolutionary code discovery frameworks} (OpenEvolve, SkyDiscover, CodeEvolve, ShinkaEvolve) are explicitly designed to work with TIG challenges and could automate the agent optimization loop. The \textbf{autoresearch} pattern (74K+ stars across variants) validates the core edit-benchmark-keep/discard loop our swarm agents use. On the algorithmic side, the highest-impact techniques for 30-second time-limited runs are: O(1) move evaluation via route segment concatenation, SWAP* inter-route neighborhood, SISR (Slack Induction by String Removals) destroy operators, and population-based genetic search with dual feasible/infeasible subpopulations.
+
+
+\subsection{Tier 1: Directly Applicable Projects}
+
+\subsubsection{TIG Monorepo (tig-foundation/tig-monorepo)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/tig-foundation/tig-monorepo
+  \item \textbf{Stars:} 107 | \textbf{Language:} Rust | \textbf{License:} Custom TIG licenses
+  \item \textbf{Last Updated:} 2026-04-17
+\end{itemize}
+
+The most relevant repository. Contains \textbf{29 community-submitted VRPTW algorithms} in \texttt{tig-\allowbreak algorithms/\allowbreak src/\allowbreak vehicle\_routing/\allowbreak }, all using the identical Rust \texttt{solve\_challenge()} function signature with \texttt{Challenge}, \texttt{Solution}, and \texttt{save\_solution} types. Notable submissions:
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{\texttt{hgs\_v1}}: Full Rust port of Vidal's Hybrid Genetic Search. Multi-file implementation with \texttt{constructive.rs}, \texttt{genetic.rs}, \texttt{local\_search.rs}, \texttt{population.rs}, \texttt{individual.rs}, \texttt{sequence.rs}, \texttt{solver.rs}. Configurable exploration levels (0-6). This represents the state of the art for VRPTW metaheuristics in Rust.
+  \item \textbf{\texttt{fast\_lane\_v2/\allowbreak v3/\allowbreak v4}}: Hybrid Genetic Algorithm with Route-Based Crossover (RBX), Or-Opt moves, diversity boosting. Multi-file with \texttt{builder.rs}, \texttt{evolution.rs}, \texttt{gene\_pool.rs}, \texttt{operators.rs}.
+  \item \textbf{Clarke-Wright variants}: \texttt{clarke\_wright}, \texttt{clarke\_wright\_super}, \texttt{enhanced\_cw}, \texttt{advanced\_cw\_adp}, \texttt{advanced\_cw\_opt}, \texttt{new\_enhanced\_cw\_opt}
+  \item \textbf{Other}: \texttt{vrptw\_ultimate}, \texttt{vrptw\_high}, \texttt{sausage}, \texttt{routing\_redone}, \texttt{simple\_ls\_zero}
+\end{itemize}
+
+\subsubsection{TIG Challenges (tig-foundation/tig-challenges)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/tig-foundation/tig-challenges
+  \item \textbf{Language:} Rust + Python CLI
+\end{itemize}
+
+Explicitly designed as a benchmark suite for AI-driven algorithm discovery frameworks. Provides a \texttt{tig.py} CLI with \texttt{generate\_dataset}, \texttt{run\_algorithm}, and \texttt{evaluate\_solutions} commands. The \texttt{vehicle\_routing/\allowbreak algorithm/\allowbreak mod.rs} file starts as a stub, designed to be filled by discovery agents. The README directly references three frameworks: SkyDiscover, CodeEvolve, and OpenEvolve.
+
+
+\subsubsection{HGS-CVRP (vidalt/HGS-CVRP)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/vidalt/HGS-CVRP
+  \item \textbf{Stars:} 427 | \textbf{Language:} C++ | \textbf{License:} MIT
+\end{itemize}
+
+The canonical reference implementation of Hybrid Genetic Search by Thibaut Vidal. Key techniques:
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{SWAP* neighborhood}: exchanges customers between routes, inserting each at its best position (not each other's slot). Uses precomputed top-3 insertion positions for O(n\textbackslash{}textsuperscript\{2\}) complexity.
+  \item \textbf{Adaptive penalty}: capacity and time window violations treated as soft constraints with dynamically adjusted penalties targeting \textbackslash{}textasciitilde43\textbackslash{}\% feasible solution rate.
+  \item \textbf{Dual population}: feasible + infeasible subpopulations with diversity-aware fitness.
+  \item \textbf{Granular neighborhoods}: limits search to k=40 nearest customers.
+  \item \textbf{SREX crossover}: Selective Route Exchange that preserves complete route structures.
+\end{itemize}
+
+\subsubsection{PyVRP (PyVRP/PyVRP)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/PyVRP/PyVRP
+  \item \textbf{Stars:} 624 | \textbf{Language:} Python/C++ | \textbf{License:} MIT
+\end{itemize}
+
+State-of-the-art HGS-based solver. Published in INFORMS Journal on Computing (2024). Achieves 0.40\textbackslash{}\% gap on 1000-customer Homberger instances. Key parameter settings from the paper:
+
+
+\vspace{0.4em}
+\noindent
+\small
+\begin{tabularx}{\columnwidth}{@{}XX@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Population min size & 25 \\
+Generation size & 40 \\
+Elite count & 4-5 \\
+Granular neighborhood k & 40 \\
+Initial time warp penalty & 6 \\
+Penalty increase factor & 1.34 \\
+Penalty decrease factor & 0.32 \\
+Repair probability & 80\textbackslash{}\% \\
+\bottomrule
+\end{tabularx}
+\vspace{0.4em}
+
+\subsubsection{reinterpretcat/vrp}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/reinterpretcat/vrp
+  \item \textbf{Stars:} 485 | \textbf{Language:} Rust | \textbf{License:} Apache 2.0
+\end{itemize}
+
+The most complete open-source Rust VRP solver. Modular architecture with \texttt{vrp-\allowbreak core}, \texttt{vrp-\allowbreak scientific} (Solomon/HG format), \texttt{vrp-\allowbreak pragmatic}. Uses ruin-and-recreate, population-based search. Available on crates.io. Good reference for local search operators and distance matrix handling patterns in Rust.
+
+
+\subsection{Tier 2: Strong Reference Implementations}
+
+\subsubsection{VROOM (VROOM-Project/vroom)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/VROOM-Project/vroom
+  \item \textbf{Stars:} 1,720 | \textbf{Language:} C++20 | \textbf{License:} BSD 2-Clause
+\end{itemize}
+
+Optimized for speed (millisecond solve times). Supports CVRP, VRPTW, PDPTW. Excellent reference for fast local search under time constraints.
+
+
+\subsubsection{VRPTW-ALNS with SISRs (TimeGone07/VRPTW-ALNS)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/TimeGone07/VRPTW-ALNS
+  \item \textbf{Stars:} 35 | \textbf{Language:} Python
+\end{itemize}
+
+Implements ALNS + SISRs (Slack Induction by String Removals). Achieves \textbackslash{}textasciitilde2.49\textbackslash{}\% average gap to BKS on 100-customer Solomon instances. The SISRs destroy operator is a proven high-performer worth porting to Rust.
+
+
+\subsubsection{ALNS\_VRPTW (zll-hust/ALNS\_VRPTW)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/zll-hust/ALNS\_VRPTW
+  \item \textbf{Stars:} 75 | \textbf{Language:} Java
+\end{itemize}
+
+Another ALNS reference with Homberger instance support.
+
+
+\subsubsection{AILS-VRP Rust Solver (dguimarans/ails-vrp-rust-solver)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/dguimarans/ails-vrp-rust-solver
+  \item \textbf{Language:} Rust | \textbf{License:} MIT
+\end{itemize}
+
+Adaptive Iterated Local Search (AILS-II) for generic VRPs. Early stage but a clean Rust implementation.
+
+
+\subsubsection{LNS-VRP (raviqqe/lns-vrp)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/raviqqe/lns-vrp
+  \item \textbf{Language:} Rust | \textbf{License:} Unlicense
+\end{itemize}
+
+Clean Large Neighborhood Search implementation with ruin-and-recreate. Good reference for Rust LNS patterns.
+
+
+\subsection{Tier 3: LLM-Powered Evolutionary Discovery Frameworks}
+
+These frameworks automate the edit-benchmark-keep/discard loop and are explicitly designed to work with TIG challenges.
+
+
+\subsubsection{OpenEvolve (algorithmicsuperintelligence/openevolve)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/algorithmicsuperintelligence/openevolve
+  \item \textbf{Stars:} 5,992 | \textbf{License:} Apache 2.0
+\end{itemize}
+
+Open-source implementation of AlphaEvolve. Island-based parallel evolution, multi-objective Pareto optimization. Supports Rust code evolution. Could drive our \texttt{solve\_challenge} function directly.
+
+
+\subsubsection{SkyDiscover (skydiscover-ai/skydiscover)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/skydiscover-ai/skydiscover
+  \item \textbf{Stars:} 441 | \textbf{License:} Apache 2.0
+\end{itemize}
+
+Introduces AdaEvolve (adapts optimization based on progress) and EvoX (evolves the optimization strategy itself using LLMs). Claims \textbackslash{}textasciitilde34\textbackslash{}\% median improvement over OpenEvolve/GEPA/ShinkaEvolve. Natively supports TIG vehicle\_routing challenge.
+
+
+\subsubsection{CodeEvolve (inter-co/science-codeevolve)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/inter-co/science-codeevolve
+  \item \textbf{Stars:} 75 | \textbf{License:} Apache 2.0
+\end{itemize}
+
+Evolutionary coding agent with "inspiration-based crossover" --- architecturally identical to our swarm's inspiration mechanism. Uses MAP-Elites quality-diversity archives.
+
+
+\subsubsection{ShinkaEvolve (SakanaAI/ShinkaEvolve)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/SakanaAI/ShinkaEvolve
+  \item \textbf{Stars:} 1,083 | \textbf{License:} Apache 2.0
+\end{itemize}
+
+By Sakana AI, accepted at ICLR 2026. Ships Claude Code skills (\texttt{shinka-\allowbreak setup}, \texttt{shinka-\allowbreak run}, \texttt{shinka-\allowbreak inspect}). Won ICFP 2025 Programming Contest.
+
+
+\subsubsection{FunSearch (google-deepmind/funsearch)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/google-deepmind/funsearch
+  \item \textbf{Stars:} 1,042
+\end{itemize}
+
+The foundational work (Nature 2024) that inspired all the above frameworks. Fork \textbf{SperanzaTY/TSP-Funsearch} applies it specifically to TSP.
+
+
+\subsubsection{EvoControl (QuantaAlpha/EvoControl)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/QuantaAlpha/EvoControl
+  \item \textbf{Stars:} 117
+\end{itemize}
+
+Three innovations: diversified planning initialization, feedback-guided genetic evolution with slot-based code decomposition, hierarchical experience memory.
+
+
+\subsection{Tier 4: Autoresearch Ecosystem}
+
+\subsubsection{Karpathy's autoresearch (karpathy/autoresearch)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/karpathy/autoresearch
+  \item \textbf{Stars:} 74,144
+\end{itemize}
+
+The seminal project: a 630-line setup where an AI agent edits one file, runs for 5 minutes, checks if the metric improved, keeps or discards, repeats. \textbackslash{}textasciitilde100 experiments overnight. Our swarm demo follows exactly this pattern.
+
+
+\subsubsection{Claude Autoresearch Skill (uditgoenka/autoresearch)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/uditgoenka/autoresearch
+  \item \textbf{Stars:} 3,832
+\end{itemize}
+
+Generalizes Karpathy's approach as a Claude Code skill. Could potentially be installed in our swarm agents.
+
+
+\subsubsection{autoresearch-at-home (mutable-state-inc/autoresearch-at-home)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/mutable-state-inc/autoresearch-at-home
+  \item \textbf{Stars:} 474
+\end{itemize}
+
+Distributed autoresearch --- SETI@home style multi-agent swarm coordination. The most architecturally comparable project to our swarm demo.
+
+
+\subsubsection{pi-autoresearch (davebcn87/pi-autoresearch)}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{URL:} github.com/davebcn87/pi-autoresearch
+  \item \textbf{Stars:} 5,799
+\end{itemize}
+
+Generalized autoresearch as a Pi extension with live dashboard widget and \texttt{/\allowbreak autoresearch} command.
+
+
+\subsection{Key Algorithmic Techniques}
+
+Based on the research, these are the highest-impact techniques for improving 30-second, single-threaded scores on 400-node Homberger instances, ordered by expected impact:
+
+
+\subsubsection{O(1) Move Evaluation via Route Segment Concatenation}
+
+The single most impactful implementation technique. In VRPTW, every local search move requires time window feasibility checking, which naively costs O(route\_length) per move. By storing three attributes per route subsequence (duration, cumulative cost, time warp), any move can be evaluated in O(1) via bounded concatenations. This transforms the bottleneck from "how many moves can I evaluate in 30s" to "how smart are my move choices."
+
+
+\subsubsection{SWAP* Inter-Route Neighborhood}
+
+For two routes R1, R2, considers all pairs (u in R1, v in R2) and evaluates swapping them, inserting each at its \textit{best} position in the receiving route (not each other's slot). Uses precomputed top-3 best insertion positions for O(n\textbackslash{}textsuperscript\{2\}) complexity.
+
+
+\subsubsection{SISR Destroy Operator}
+
+Slack Induction by String Removals. Removes multiple consecutive customer sequences from routes that are geographically near each other (Lmax=5). Paired with greedy-blink repair (randomly skipping feasibility checks for controlled randomness). Published by Christiaens and Vanden Berghe (2020), achieving state-of-the-art results without population management.
+
+
+\subsubsection{Hybrid Genetic Search Architecture}
+
+Dual population (feasible + infeasible), SREX crossover (preserves complete routes), intensive local search on every offspring, adaptive penalty management targeting \textbackslash{}textasciitilde43\textbackslash{}\% feasible rate. This is the architecture behind all top VRPTW solvers.
+
+
+\subsubsection{Granular Neighborhood Pruning}
+
+Restrict all insertion and local search candidates to k=30-40 nearest neighbors. Essential for 400-node instances to reduce O(n\textbackslash{}textsuperscript\{2\}) search cost.
+
+
+\subsubsection{Extended Time Budget}
+
+The current solver uses only 4.5 of 30 available seconds. Simply extending the deadline is a free improvement.
+
+
+\subsection{Best-Known Solution Reference}
+
+Current best-known values for 400-customer Homberger instances (SINTEF benchmark database):
+
+
+\vspace{0.4em}
+\noindent
+\small
+\begin{tabularx}{\columnwidth}{@{}XXXX@{}}
+\toprule
+\textbf{Category} & \textbf{Vehicles} & \textbf{Distance Range} & \textbf{Notes} \\
+\midrule
+C1 (4xx) & 36-40 & 6,803-7,686 & Clustered, tight windows \\
+C2 (4xx) & 11-12 & 3,703-4,233 & Clustered, wide windows \\
+R1 (4xx) & 36-40 & 7,257-10,372 & Random, tight windows \\
+R2 (4xx) & 8 & 4,016-9,210 & Random, wide windows \\
+RC1 (4xx) & 36 & 7,309-8,571 & Mixed, tight windows \\
+RC2 (4xx) & 8-11 & 3,631-6,706 & Mixed, wide windows \\
+\bottomrule
+\end{tabularx}
+\vspace{0.4em}
+
+\subsection{Recommendations}
+
+\subsubsection{Immediate Actions (No-Regret)}
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Study TIG monorepo's \texttt{hgs\_v1} submission} for HGS architecture patterns in Rust with the exact same types
+  \item \textbf{Extend solver deadline} from 4.5s to \textbackslash{}textasciitilde27s (free improvement)
+  \item \textbf{Upgrade regret-2 to regret-3} in the repair operator
+\end{enumerate}
+
+\subsubsection{Medium-Term (Structural Improvements)}
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Implement O(1) move evaluation} via segment concatenation
+  \item \textbf{Add SISR destroy} as an ALNS operator
+  \item \textbf{Apply granular neighborhoods} to all search operations, not just destroy seeding
+\end{enumerate}
+
+\subsubsection{Advanced (Highest Ceiling)}
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Implement SWAP}* with top-3 insertion caching
+  \item \textbf{Add population management} with feasible/infeasible subpopulations
+  \item \textbf{Consider integrating OpenEvolve or SkyDiscover} to automate the agent optimization loop
+\end{enumerate}
+
+\subsubsection{Framework Integration}
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Evaluate ShinkaEvolve} --- ships Claude Code skills and won ICFP 2025
+  \item \textbf{Study autoresearch-at-home} for distributed coordination patterns
+\end{enumerate}
+
+\subsection{Sources}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \href{https://github.com/tig-foundation/tig-monorepo}{TIG Monorepo}
+  \item \href{https://github.com/tig-foundation/tig-challenges}{TIG Challenges}
+  \item \href{https://github.com/vidalt/HGS-CVRP}{HGS-CVRP by Vidal}
+  \item \href{https://github.com/PyVRP/PyVRP}{PyVRP}
+  \item \href{https://arxiv.org/abs/2403.13795}{PyVRP Paper}
+  \item \href{https://github.com/reinterpretcat/vrp}{reinterpretcat/vrp}
+  \item \href{https://github.com/VROOM-Project/vroom}{VROOM}
+  \item \href{https://github.com/TimeGone07/VRPTW-ALNS}{VRPTW-ALNS with SISRs}
+  \item \href{https://github.com/dguimarans/ails-vrp-rust-solver}{AILS-VRP Rust Solver}
+  \item \href{https://github.com/raviqqe/lns-vrp}{LNS-VRP Rust}
+  \item \href{https://github.com/algorithmicsuperintelligence/openevolve}{OpenEvolve}
+  \item \href{https://github.com/skydiscover-ai/skydiscover}{SkyDiscover}
+  \item \href{https://github.com/inter-co/science-codeevolve}{CodeEvolve}
+  \item \href{https://github.com/SakanaAI/ShinkaEvolve}{ShinkaEvolve}
+  \item \href{https://github.com/google-deepmind/funsearch}{FunSearch}
+  \item \href{https://github.com/QuantaAlpha/EvoControl}{EvoControl}
+  \item \href{https://github.com/karpathy/autoresearch}{Karpathy autoresearch}
+  \item \href{https://github.com/mutable-state-inc/autoresearch-at-home}{autoresearch-at-home}
+  \item \href{https://pubsonline.informs.org/doi/10.1287/trsc.2019.0914}{SISR Paper}
+  \item \href{https://www.sciencedirect.com/science/article/pii/S0377221724003928}{ALNS Operator Review (2024)}
+  \item \href{https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/400-customers/}{SINTEF Homberger Benchmark}
+  \item \href{https://arxiv.org/html/2604.07872}{PyVRP+ LLM-Evolved Heuristics}
+\end{itemize}
+
+
+\balance
+\end{document}
