@@ -1,0 +1,764 @@
+\documentclass[twocolumn,10pt,letterpaper]{article}
+
+% -- Page geometry --
+\usepackage[
+  top=0.85in,
+  bottom=0.75in,
+  left=0.65in,
+  right=0.65in,
+  columnsep=0.25in
+]{geometry}
+
+% -- Beautiful typography: Century Schoolbook --
+\usepackage[T1]{fontenc}
+\usepackage{tgschola}              % TeX Gyre Schola (Century Schoolbook)
+\usepackage[scaled=0.82]{beramono} % Bera Mono for code
+\usepackage{microtype}             % Microtypographic refinements
+\usepackage{setspace}              % Line spacing control
+\setstretch{1.08}                  % Slightly open leading for readability
+
+% -- Packages --
+\usepackage{xurl}        % Allow URL breaks at any character (load before hyperref)
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{booktabs}    % Professional tables
+\usepackage{tabularx}    % Width-constrained tables
+\usepackage{enumitem}    % List customization
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage{balance}
+\usepackage{stfloats}    % Enable [h] placement for table* in two-column layout
+\usepackage{titlesec}    % Section heading customization
+\usepackage{listings}    % Code blocks with line wrapping
+
+% -- Paragraph spacing (no indent, modest skip) --
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em plus 0.1em minus 0.05em}
+\setlength{\emergencystretch}{1em}  % Extra stretch to avoid overfull hboxes in narrow columns
+
+% -- Code listings with line wrapping --
+\lstset{
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  breakatwhitespace=false,
+  breakautoindent=true,
+  postbreak=\mbox{\textcolor{accentrule}{$\hookrightarrow$}\space},
+  columns=fullflexible,
+  keepspaces=true,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codebg},
+  framesep=3pt,
+  aboveskip=0.5em,
+  belowskip=0.5em,
+  xleftmargin=4pt,
+  xrightmargin=0pt,
+}
+
+% -- Colors --
+\definecolor{linkblue}{HTML}{1D4ED8}
+\definecolor{headergray}{HTML}{1F2937}
+\definecolor{rulegray}{HTML}{D1D5DB}
+\definecolor{titlebg}{HTML}{111827}
+\definecolor{accentrule}{HTML}{6B7280}
+\definecolor{brandred}{HTML}{8B2635}
+\definecolor{codebg}{HTML}{F3F4F6}    % Very light gray for code backgrounds
+
+% -- Hyperlinks --
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkblue,
+    urlcolor=linkblue,
+    citecolor=linkblue,
+    pdfstartview=FitH
+}
+
+% -- Section numbering: Roman > Alph > Arabic > alph, no decimals --
+\renewcommand{\thesection}{\Roman{section}}
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\renewcommand{\thesubsubsection}{\arabic{subsubsection}}
+\renewcommand{\theparagraph}{\alph{paragraph}}
+\makeatletter
+\@addtoreset{subsection}{section}
+\@addtoreset{subsubsection}{subsection}
+\@addtoreset{paragraph}{subsubsection}
+\makeatother
+
+% -- Section headings --
+\titleformat{\section}
+  {\large\bfseries\color{titlebg}}
+  {\thesection.}{0.5em}{}
+  [\vspace{-0.3em}{\color{accentrule}\rule{\columnwidth}{0.5pt}}]
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{headergray}}
+  {\thesubsection.}{0.4em}{}
+\titleformat{\subsubsection}
+  {\small\bfseries\itshape\color{headergray}}
+  {\thesubsubsection.}{0.4em}{}
+\titleformat{\paragraph}[runin]
+  {\small\bfseries\color{headergray}}
+  {\theparagraph)}{0.4em}{}[.\hspace{0.4em}]
+\titlespacing*{\section}{0pt}{1.0em}{0.35em}
+\titlespacing*{\subsection}{0pt}{0.75em}{0.2em}
+\titlespacing*{\subsubsection}{0pt}{0.55em}{0.15em}
+\titlespacing*{\paragraph}{0pt}{0.4em}{0em}
+
+% -- Lists: compact, elegant --
+\setlist{nosep, leftmargin=1.1em, topsep=0.2em, itemsep=0.05em}
+\setlist[itemize]{label={\small\textcolor{accentrule}{\textbullet}}}
+\setlist[enumerate]{label={\small\textcolor{headergray}{\arabic*.}}}
+
+% -- Tables: tighter, small text --
+\renewcommand{\arraystretch}{1.15}
+
+% -- Header/footer (pages 2+) --
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.3pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\footnotesize\color{headergray}\textit{VRPTW Solver Improvements: Literature Review and Prioritized Recommendations}}
+\renewcommand{\footrulewidth}{0.3pt}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height \footrulewidth\hfill}}
+% Brand mark footer: CaseMirror wordmark left, page number right (both burgundy)
+\fancyfoot[L]{\footnotesize\textbf{\color{headergray}CaseMirror}}
+\fancyfoot[R]{\footnotesize\color{headergray}\thepage}
+
+% -- Page 1 style: footer only, no header rule --
+\fancypagestyle{firstpage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0.3pt}%
+  \renewcommand{\footrule}{\hbox to\headwidth{\color{rulegray}\leaders\hrule height 0.3pt\hfill}}%
+  \fancyfoot[L]{\footnotesize\textbf{\color{headergray}CaseMirror}}%
+  \fancyfoot[R]{\footnotesize\color{headergray}\thepage}%
+}
+
+% -- Column rule --
+\setlength{\columnseprule}{0.15pt}
+\renewcommand{\columnseprulecolor}{\color{rulegray}}
+
+% -- Title --
+\title{\vspace{-1.8em}\LARGE\bfseries\color{titlebg} VRPTW Solver Improvements: Literature Review and Prioritized Recommendations\vspace{-0.3em}}
+\author{CaseMirror Research \\ \small\itshape\href{https://casemirror.ai}{\textcolor{headergray}{casemirror.ai}}}
+\date{{\small\color{headergray} \today}}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{firstpage}
+\vspace{-0.5em}
+
+
+\textbf{Generated:} 2026-04-18
+
+\textbf{Topic:} State-of-the-art techniques for Vehicle Routing Problem with Time Windows (VRPTW) -- survey of academic literature and a prioritized roadmap of extensions for this project's hybrid ALNS solver on Homberger 400-node benchmarks, under a single-threaded 30-second-per-instance budget.
+
+\textbf{Scope:} Scientific literature (Ropke/Pisinger, Vidal, Christiaens/Vanden Berghe, Kool, Wouda et al.), technical details of SISR, HGS, LKH-3, and Vidal-style O(1) concatenation evaluation, with concrete Rust-implementable recommendations.
+
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{Executive Summary}
+
+The current solver is a hybrid ALNS that spends only \textbf{\textasciitilde{}4.5 seconds of the 30-second budget} per instance (\texttt{deadline = start + 4500ms}), uses \textbf{O(n) \texttt{is\_feasible} scans on every move attempt}, has \textbf{no neighbor-list pruning} (every repair operator scans all routes x all positions), and relies on \textbf{intra-route 2-opt that reverses segments} -- a move that is \textit{almost always infeasible} under tight time windows and wastes iteration budget. These four facts together mean the solver leaves an enormous amount of quality on the table relative to a textbook Vidal/HGS-style implementation.
+
+
+Three families of techniques, adopted from the published state of the art, would likely yield the largest improvements:
+
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Vidal-style concatenation-based move evaluation} (\href{https://arxiv.org/abs/2012.10384}{Vidal 2022}) reduces per-move feasibility+cost evaluation from O(route length) to amortized O(1) after O(n) route preprocessing. This single change is the foundation modern VRPTW solvers (HGS-CVRP, PyVRP) rest on.
+  \item \textbf{SISR (Slack Induction by String Removals)} destroy operator (\href{https://pubsonline.informs.org/doi/10.1287/trsc.2019.0914}{Christiaens \& Vanden Berghe 2020}) paired with a \textbf{greedy-blink repair} consistently outperforms classical random/worst/Shaw destroy operators on routing benchmarks and is strikingly simple.
+  \item \textbf{SWAP}\textit{ (\href{https://arxiv.org/abs/2012.10384}{Vidal et al. 2022}) -- swap two customers across routes, but each reinserted at its }best* position in the other route -- catches moves that plain exchange misses and is the highest-ROI intensification operator post-basic-relocate.
+\end{enumerate}
+
+The single-largest low-effort change, however, is \textbf{extending the time budget}: from 4.5 s to \textasciitilde{}27 s per instance (leaving headroom for benchmark harness overhead). That alone should yield a significant score drop with no algorithmic change.
+
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{The Current Algorithm (Baseline)}
+
+\texttt{src/\allowbreak vehicle\_routing/\allowbreak algorithm/\allowbreak mod.rs} implements a five-phase pipeline:
+
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Nearest-neighbor construction}, seeded by earliest due-time, with forward time-window and capacity checks.
+  \item \textbf{Merge-to-fleet} -- pairwise route concatenation + cheapest-insertion to shrink to \texttt{fleet\_size} routes.
+  \item \textbf{Quick 2-opt local search} (budget 800 ms).
+  \item \textbf{ALNS (budget 3200 ms)} with 4 destroy ops (random, worst, Shaw, route removal) and 2 repair ops (greedy, regret-2). Adaptive weights, exponential cooling. Shaw-relatedness is precomputed with a 30-neighbor cap.
+  \item \textbf{SA fine-tuning (budget 4500 - 3200 = 1300 ms)} with intra-2-opt, relocate, exchange, Or-opt (1-3), cross-2-opt. Delta evaluation avoids clones where possible but still calls \texttt{is\_feasible(ref route)} per try.
+\end{enumerate}
+
+\subsubsection{Observations with ROI implications}
+
+\vspace{0.4em}
+\noindent
+\small
+\begin{tabularx}{\columnwidth}{@{}XX@{}}
+\toprule
+\textbf{Observation} & \textbf{Implication} \\
+\midrule
+\texttt{deadline = 4500 ms}, total budget is 30 000 ms & Solver quits \textbf{85\% of the allotted time early}. No algorithmic change will matter as much as fixing this. \\
+\texttt{is\_feasible()} is an O(route length) scan called on every candidate move & On 400-node instances, routes are 20-40 nodes; per-iteration cost is O(40) x moves-per-sec. Vidal-style concat evaluators make this O(1). \\
+No neighbor lists outside of Shaw destroy (30 NN used only for destroy seeding) & \texttt{greedy\_insertion} and \texttt{regret\_insertion} each scan every (route, position) pair -- O(k \textit{ n\^{}2) per call. Neighbor lists reduce this to O(k } Gamma * n) with Gamma\textasciitilde{}20. \\
+Intra-2-opt reverses a segment, which flips arrival times mid-route & On tight-TW instances (R1\_4, RC1\_4, C1\_4) this move is almost always infeasible. Wasted iterations. Should be replaced by 2-opt* (inter-route, no reversal). \\
+\texttt{shaw\_removal} uses \texttt{custs.contains(ref nb)} & O(n) linear scan inside a loop -- easy O(1) fix with a bitset. \\
+\texttt{worst\_removal} re-filters \texttt{used} via full vector scan on every pick & Same issue. \\
+\texttt{penalized\_cost(ref routes)} fully re-sums distances & Should be incremental; SA phase does track \texttt{route\_dists} correctly, but ALNS phase does not. \\
+\texttt{distance\_matrix: Vec<Vec<i32>>} & Double indirection; a flat \texttt{Vec<i32>} with stride-based indexing is \textasciitilde{}30\% faster due to cache locality for 400-node matrices (640 KB). \\
+Fleet-overflow penalty is 100 000 per extra route & Reasonable, but not differentiated from distance scale. Adaptive penalty (Vidal) would help. \\
+\bottomrule
+\end{tabularx}
+\vspace{0.4em}
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{Literature Findings}
+
+\subsubsection{2.1 Adaptive Large Neighborhood Search (ALNS)}
+
+Originated in \href{https://www.sciencedirect.com/science/article/abs/pii/S0305054805003023}{Ropke \& Pisinger 2006} (also the \href{https://backend.orbit.dtu.dk/ws/portalfiles/portal/3154899/An\%20adaptive\%20large\%20neighborhood\%20search\%20heuristic\%20for\%20the\%20pickup\%20and\%20delivery\%20problem\%20with\%20time\%20windows\_TechRep\_ropke\_pisinger.pdf}{DTU tech report PDF}). The core destroy/repair operator set is:
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Random removal} -- uniform q customers.
+  \item \textbf{Worst removal} -- sort by \texttt{cost(i) = d(prev,i) + d(i,next) -\allowbreak  d(prev,next)}, sample via \texttt{idx = floor(y\^{}p * |L|)} with \texttt{p \textasciitilde{} 3} (bias to worst, but randomized).
+  \item \textbf{Shaw (relatedness) removal} -- \texttt{R(i,j) = phi\textit{d\_ij/\allowbreak d\_max + chi}|t\_i -\allowbreak  t\_j|/\allowbreak t\_max + psi\textit{|q\_i -\allowbreak  q\_j|/\allowbreak q\_max + omega}V\_ij} with canonical weights \texttt{phi=9, chi=3, psi=2, omega=5}. Selection by the same \texttt{y\^{}p} rule, p\textasciitilde{}6.
+  \item \textbf{Greedy insertion} -- pick unassigned i with minimum best-Delta; insert.
+  \item \textbf{Regret-k insertion} -- \texttt{regret\_k(i) = Sigma\_{h=2..k}(Delta\^{}(h)(i) -\allowbreak  Delta\^{}(1)(i))}; insert the customer with \textit{maximum} regret. Regret-2, regret-3, regret-4, and regret-\textit{m} (over all routes) are all worth having. Typically regret-3 dominates on VRPTW.
+  \item \textbf{Noise function} -- perturb Deltacost by \texttt{xi \textasciitilde{} U[-\allowbreak eta\textit{d\_max, +eta}d\_max]}, eta in [0.025, 0.1], with probability 0.5. Increases exploration cheaply.
+\end{itemize}
+
+The current code has only random, worst, Shaw, and route-removal destroy, and only greedy + regret-\textit{k=2} repair. Cluster, zone, and history-based removal are missing; noise-perturbed insertion is missing.
+
+
+\subsubsection{2.2 SISR -- Slack Induction by String Removals}
+
+\href{https://pubsonline.informs.org/doi/10.1287/trsc.2019.0914}{Christiaens \& Vanden Berghe 2020, \textit{Transportation Science}} (\href{https://scispace.com/pdf/slack-induction-by-string-removals-for-vehicle-routing-14gqwirdlp.pdf}{preprint}) introduced a deceptively simple destroy that removes \textbf{contiguous strings} of customers across multiple routes. Strings (not random picks) preserve the \textit{slack} -- the time-window headroom -- around the removed region, which dramatically improves subsequent repair quality.
+
+
+Standard parameter set:
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \texttt{L\_max = 10} (max string cardinality)
+  \item \texttt{c\_avg = 10} (average customers removed)
+  \item \texttt{L\_s\_max = min(L\_max, avg\_route\_len)}
+  \item \texttt{k\_s = (4*c\_avg) /\allowbreak  (1 + L\_s\_max) -\allowbreak  1}
+  \item \texttt{k\_s \textasciitilde{} U[1, k\_s+1]} -- number of routes touched
+  \item With probability alpha \textasciitilde{} 0.5, use "split-string" mode: contiguous substring plus skip-over segment.
+\end{itemize}
+
+Repair is \textbf{greedy-blink insertion}: for each unassigned customer (ordered by demand descending or random), evaluate candidate positions greedily, but with probability \texttt{beta \textasciitilde{} 0.01} skip the current best (a "blink") -- tiny randomization without regret's overhead. SISR reproduces near-HGS quality on CVRP with far simpler code.
+
+
+Contrasted with Shaw removal: SISR preserves geographic/temporal coherence of the \textit{removed} region, not the \textit{seed}. This makes the residual routes more insertable.
+
+
+\subsubsection{2.3 Vidal HGS and SWAP*}
+
+\href{https://arxiv.org/abs/2012.10384}{Vidal 2022, "Hybrid Genetic Search for the CVRP: Open-Source Implementation and SWAP* Neighborhood"} (\href{https://github.com/vidalt/HGS-CVRP}{GitHub}) defined the modern VRPTW/CVRP engine:
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Giant-tour representation} decoded by the \textbf{Split} algorithm into feasible routes (Bellman-style shortest path on a route-length DAG).
+  \item \textbf{SREX / OX crossover} recombines two giant tours.
+  \item \textbf{RELOCATE}, \textbf{SWAP}, \textbf{2-OPT}, \textbf{2-OPT}\textit{ (inter-route tail-swap }without* reversal), \textbf{Or-opt(1,2,3)} neighborhoods.
+  \item \textbf{SWAP}\textit{: exchange customers i in route A and j in route B, but each reinserted at its }own best* position in the other route (not in place). Pruned by geometric sector overlap. This catches moves invisible to plain SWAP and is a major quality driver.
+  \item \textbf{Time-warp penalty} -- soft-feasibility: accept a route that violates TW but pay a linear penalty, letting the search cross infeasible plateaus. Penalty weight adjusted to keep feasibility ratio in target band.
+\end{itemize}
+
+\href{https://wouterkool.github.io/pdf/paper-kool-hgs-vrptw.pdf}{Wouder Kool et al., "HGS-VRPTW"} (DIMACS 2022 VRPTW winner) extended HGS-CVRP directly to VRPTW and topped the competition. \href{https://arxiv.org/pdf/2403.13795}{PyVRP} (\href{https://pyvrp.org/}{docs}) is an open-source Python/C++ implementation of HGS-VRPTW/CVRP with \texttt{RELOCATE}, \texttt{SWAP}, \texttt{2-\allowbreak OPT}, \texttt{2-\allowbreak OPT\textit{}, splitting classical 2-opt into \texttt{ReverseSegment} (intra, with precomputed time-warp feasibility) and \texttt{SwapTails} (inter, = 2-opt}).
+
+
+\subsubsection{2.4 LKH-3}
+
+\href{http://akira.ruc.dk/\textasciitilde{}keld/research/LKH-3/}{Helsgaun's LKH-3} handles VRPTW by penalty transformation: convert VRPTW to asymmetric TSP with slack arcs, then run Lin-Kernighan k-opt moves. It posts competitive results on Homberger 400 but typically runs minutes per instance -- not trivial to fit in 30 s. Its sequential k-opt ideas (ejection chains) can be \textit{inspired} without full LKH machinery. Helsgaun 2017 describes the extensions in detail.
+
+
+\subsubsection{2.5 Concatenation-based O(1) Move Evaluation}
+
+The engineering unlock of modern VRPTW is \textit{constant-time move evaluation} via cumulative route descriptors, developed in:
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0167637795003240}{Kindervater \& Savelsbergh 1997, "Vehicle routing: handling edge exchanges"} -- forward/backward-slack propagation.
+  \item \href{https://pubsonline.informs.org/doi/10.1287/ijoc.4.2.146}{Savelsbergh 1992, \textit{INFORMS J. on Comp.}} -- \textbf{Forward Time Slack} (FTS): \texttt{FTS\_i = min\_{j>=i} (l\_j -\allowbreak  b\_j)}. Insertion feasible <=> \texttt{push\_forward <= FTS\_next}.
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0377221713005547}{Vidal et al. 2014, \textit{EJOR}, "A unified solution framework for multi-attribute vehicle routing problems"} -- generalized \textbf{(duration, earliest\_departure, latest\_arrival, time\_warp)} route-segment tuple that concatenates in O(1):
+  \item \texttt{concat(a, b) = (duration\_a + duration\_b + max(0, earliest\_b -\allowbreak  latest\_a), ...)}
+  \item \href{https://doi.org/10.1002/net.21693}{Vidal 2016, \textit{Networks}, "Timing problem and constant-time move evaluations"} -- formalization and bounds.
+\end{itemize}
+
+With this data structure, after O(n) route-segment preprocessing, every move -- relocate, swap, 2-opt, 2-opt*, Or-opt -- is evaluated in \textbf{amortized O(1)}. Local search speed increases by 10-50x on 400-node routes.
+
+
+\subsubsection{2.6 Granular / Neighbor-List Search}
+
+\href{https://pubsonline.informs.org/doi/10.1287/ijoc.15.4.333.24890}{Toth \& Vigo 2003, "The granular tabu search and its application to the vehicle-routing problem"} introduced \textbf{granular neighborhoods}: limit local-search move candidates to edges (i,j) whose distance is below \texttt{beta * c\_hat} (beta \textasciitilde{} 1.3-1.5, c\_hat = average edge length). Equivalent to a precomputed \textbf{top-Gamma neighbor list} with Gamma in [20, 40]. This prunes the neighborhood by >90\% with minimal quality loss.
+
+
+The current code computes Shaw-relatedness neighbors (for destroy) but doesn't use them to prune insertion/repair positions. Using them there is low-hanging fruit.
+
+
+\subsubsection{2.7 Acceptance Criteria}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Simulated annealing} with geometric cooling \texttt{T\_{k+1} = alpha*T\_k}, alpha in [0.9975, 0.99995] -- the current approach.
+  \item \textbf{Late-Acceptance Hill Climbing (LAHC)} \href{https://www.sciencedirect.com/science/article/abs/pii/S0377221716305495}{Burke \& Bykov 2017}, \href{https://en.wikipedia.org/wiki/Late\_acceptance\_hill\_climbing}{Wikipedia}: accept if \texttt{f(x') <= f\_{k-\allowbreak L}} or \texttt{f(x') <= f\_current}, with \texttt{L in [1000, 5000]}. \textbf{Single parameter}, no temperature schedule, consistently competitive with well-tuned SA and nearly parameter-free.
+  \item \textbf{Record-to-record travel (RRT)}: accept if \texttt{f(x') <= (1 + delta) * f\_best}, delta in [0.001, 0.02] -- simple and strong.
+\end{itemize}
+
+LAHC is particularly attractive for this project because it removes the temperature-tuning degree of freedom the agent currently guesses at.
+
+
+\subsubsection{2.8 Recent (2022-2026) Papers}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \href{https://wouterkool.github.io/pdf/paper-kool-hgs-vrptw.pdf}{Kool et al. 2022 HGS-VRPTW} -- DIMACS 2022 winner.
+  \item \href{https://arxiv.org/pdf/2403.13795}{PyVRP 2024 (arXiv 2403.13795)} -- reference HGS-VRPTW implementation.
+  \item \href{https://www.nature.com/articles/s41598-024-74432-2}{Spark-ALNS 2024 (Nature Scientific Reports)} -- multi-objective parallel ALNS.
+  \item \href{https://link.springer.com/article/10.1007/s10878-025-01364-6}{PPO-ALNS 2025, \textit{J. Combinatorial Optimization}} -- RL (PPO) picks destroy/repair ops; 11-17\% over adaptive-weight baselines.
+  \item \href{https://link.springer.com/article/10.1007/s10732-022-09500-9}{HGS + Ruin-and-Recreate hybrid 2022, \textit{J. Heuristics}} -- SISR-style ruin inside HGS outperforms HGS alone on CVRP; likely transfers to VRPTW.
+  \item \href{https://arxiv.org/pdf/2505.23098}{Learning-to-search for multi-TW VRP 2025 (arXiv 2505.23098)} -- neural operator selection.
+\end{itemize}
+
+\subsubsection{2.9 Known Best-Known Solutions on Homberger 400}
+
+The \href{https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/400-customers/}{SINTEF VRPTW benchmark page} tracks current BKS. For 400-node instances the best-known totals (summed across the 10 instances per category) fall in these ranges (Euclidean, not rounded):
+
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item C1\_4: \textasciitilde{} 7152
+  \item C2\_4: \textasciitilde{} 3920
+  \item R1\_4: \textasciitilde{} 9899
+  \item R2\_4: \textasciitilde{} 3393
+  \item RC1\_4: \textasciitilde{} 11406
+  \item RC2\_4: \textasciitilde{} 3250
+\end{itemize}
+
+Per-instance averages are therefore \textasciitilde{}715, \textasciitilde{}392, \textasciitilde{}990, \textasciitilde{}339, \textasciitilde{}1141, \textasciitilde{}325 respectively. Across all 60 (mixed 400-node) instances the grand average is \textasciitilde{}650 (reading off SINTEF totals). The current project uses 24 representative instances -- the specific subset determines the floor, but a score near 700-900 per instance is a reasonable long-term target.
+
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{Prioritized Improvements (ordered by expected ROI)}
+
+Each item lists: \textbf{what}, \textbf{why}, \textbf{approximate impact}, \textbf{implementation sketch}, and \textbf{risk}.
+
+
+\subsubsection{[P0] Extend the algorithm's internal deadline to match the 30 s budget}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Replace \texttt{deadline = start + 4500ms} with a deadline derived from the challenge's actual time limit (or a safe \texttt{\textasciitilde{}27 000 ms} margin).
+  \item \textbf{Why}: The solver currently wastes \textasciitilde{}85 \% of allotted CPU time. Any improvement below costs time, and we have an enormous time surplus right now.
+  \item \textbf{Impact}: Likely double-digit percentage score drop with zero algorithmic change -- SA/ALNS improve monotonically with iteration count up to several thousand moves.
+  \item \textbf{Sketch}:
+\end{itemize}
+\begin{lstlisting}
+  let budget_ms = 27_000;
+  let deadline = start + Duration::from_millis(budget_ms);
+  let alns_deadline = start + Duration::from_millis(budget_ms * 6 / 10); // 60%
+  let ls_deadline = start + Duration::from_millis(2_000);
+\end{lstlisting}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Risk}: Must still call \texttt{save\_solution} frequently enough that timeouts don't cost progress; existing code already does this.
+\end{itemize}
+
+\subsubsection{[P1] Vidal-style segment descriptors for O(1) move evaluation}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: For each route, precompute an array of \texttt{SegmentInfo { duration, earliest\_departure, latest\_arrival, time\_warp, demand }} from each node forward and backward. Provide \texttt{concat(a, b) -\allowbreak > SegmentInfo}. Use these to evaluate any relocate/swap/2-opt* candidate in O(1).
+  \item \textbf{Why}: \texttt{is\_feasible} is called on every proposed move. With 400-node instances and \textasciitilde{}10 000+ moves/sec of search pressure, concat evaluators give \textasciitilde{}10x-30x speedup in local-search-bound phases.
+  \item \textbf{Impact}: Very high. Multiplies effective iteration count.
+  \item \textbf{Sketch}: The canonical reference is \href{https://www.sciencedirect.com/science/article/abs/pii/S0377221713005547}{Vidal 2014, Sec.3.2}. \texttt{concat} is:
+\end{itemize}
+\begin{lstlisting}
+  fn concat(a: Seg, b: Seg) -> Seg {
+      let delta = max(0, b.earliest_departure - a.latest_arrival);
+      Seg {
+          duration: a.duration + b.duration + delta,
+          earliest_departure: max(a.earliest_departure,
+                                  b.earliest_departure - a.duration - a.time_warp),
+          latest_arrival: min(a.latest_arrival,
+                               b.latest_arrival - a.duration + a.time_warp),
+          time_warp: a.time_warp + b.time_warp + delta,
+          demand: a.demand + b.demand,
+      }
+  }
+\end{lstlisting}
+  Move evaluation becomes "concat segments at the 2-3 route split points and test \texttt{time\_warp == 0} and \texttt{demand <= capacity}".
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Risk}: Nontrivial to get right -- write a randomized fuzz-test that checks concat-based feasibility matches the current \texttt{is\_feasible} on random routes. Don't skip this.
+\end{itemize}
+
+\subsubsection{[P2] Granular neighbor lists for insertion \& local-search moves}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Precompute \texttt{neighbors[i]} = top-Gamma (Gamma in [20, 30]) nearest customers by distance (or by Shaw relatedness). In \texttt{greedy\_insertion}, \texttt{regret\_insertion}, and all SA operators, restrict candidate insert-after nodes to \texttt{neighbors[cust]} U \texttt{neighbors[removed-\allowbreak from-\allowbreak arc-\allowbreak endpoints]}.
+  \item \textbf{Why}: Reduces insertion/repair scan from O(n \textit{ route\_length) to O(n } Gamma). For n=400, Gamma=25, that's \textasciitilde{}16x speedup in the repair-bound phases.
+  \item \textbf{Impact}: High, compounds with P1.
+  \item \textbf{Sketch}: The existing \texttt{shaw\_neighbors} array is already close -- reuse it. In \texttt{greedy\_insertion}, only try inserting \texttt{cust} adjacent to one of its Gamma nearest neighbors currently in some route.
+  \item \textbf{Risk}: Can occasionally miss the true best insertion; mitigated by occasionally (every k-th iteration) falling back to full scan or by Gamma large enough (25-30).
+\end{itemize}
+
+\subsubsection{[P3] SISR destroy + greedy-blink repair as a 5th/6th operator}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Implement string-removal destroy (L\_max=10, c\_avg=10) and greedy-blink repair (beta=0.01). Add them to the ALNS operator pool.
+  \item \textbf{Why}: Consistently outperforms random/worst/Shaw on VRPTW in the literature; preserves slack around removed segments; simple to implement.
+  \item \textbf{Impact}: Large, especially on clustered (C1, C2, RC1, RC2) instances.
+  \item \textbf{Sketch}:
+\end{itemize}
+\begin{lstlisting}
+  fn sisr_destroy(routes, dm, tw, rng) -> Vec<usize> {
+      let c_avg = 10.0;
+      let l_max = 10;
+      let avg_len = avg_route_len(routes);
+      let l_smax = l_max.min(avg_len);
+      let k_s_max = ((4.0 * c_avg) / (1.0 + l_smax as f64) - 1.0) as usize;
+      let k_s = 1 + rng.next() % (k_s_max + 1);
+      let seed = random_customer(routes, rng);
+      // walk through up to k_s routes ordered by proximity to seed
+      // from each remove a string of length U[1, min(route_len, l_smax)]
+      // with prob alpha: split-string (remove L customers, skipping m survivors)
+  }
+  fn blink_repair(partial, removed, dm, tw, rng) {
+      // order removed by demand descending
+      for cust in removed {
+          for (pos, cost) in candidate_positions(cust, partial) {
+              if !feasible(pos) { continue; }
+              if rng.next_f64() < 0.01 { continue; } // blink
+              // accept first non-blinked feasible insertion
+              break;
+          }
+      }
+  }
+\end{lstlisting}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Risk}: Low. SISR is well-specified in the paper and has clean parameter defaults.
+\end{itemize}
+
+\subsubsection{[P4] SWAP* operator}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Add a SWAP\textit{ move to the SA/LS phase: swap \texttt{i in A} and \texttt{j in B} but reinsert each at its }own best* position in the other route (not in place).
+  \item \textbf{Why}: Finds moves invisible to plain \texttt{try\_exchange} (which swaps in place). \href{https://arxiv.org/abs/2012.10384}{Vidal 2022 Sec.4.2} shows SWAP\textit{ drives most of the remaining quality gains once RELOCATE/2-OPT} are saturated.
+  \item \textbf{Impact}: Medium-high, specifically in the endgame.
+  \item \textbf{Sketch}: For each pair \texttt{(i in A, j in B)} with \texttt{i in neighbors[j]} or vice versa:
+\end{itemize}
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item Remove \texttt{i} from \texttt{A} (compute residual A' cost in O(1) via P1).
+  \item Remove \texttt{j} from \texttt{B} (residual B' cost in O(1)).
+  \item Find best insertion positions for \texttt{j} in A' and \texttt{i} in B' restricted to Gamma-neighbor-adjacent slots.
+  \item Accept if total delta is improving.
+\end{enumerate}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Risk}: More complex than plain swap; gate with neighbor-list pruning to keep cost manageable.
+\end{itemize}
+
+\subsubsection{[P5] 2-opt* (inter-route, no reversal)}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Replace \texttt{try\_intra\_2opt} with \texttt{try\_2opt\_star}: swap \textit{tails} between two routes without reversing either.
+  \item \textbf{Why}: The current intra-route 2-opt reverses a segment, which flips arrival times through that segment -- usually infeasible under tight TWs. 2-opt* keeps direction and is the VRPTW-native inter-route crossover. Potvin \& Rousseau 1995.
+  \item \textbf{Impact}: Medium. Current intra-2-opt is failing silently most of the time.
+  \item \textbf{Sketch}:
+\end{itemize}
+\begin{lstlisting}
+  fn try_2opt_star(routes, rng) {
+      let (r1, r2) = pick_two_routes(rng);
+      let i = random_edge_in(r1);
+      let j = random_edge_in(r2);
+      let new_r1 = r1[..=i] ++ r2[j+1..];   // no reversal
+      let new_r2 = r2[..=j] ++ r1[i+1..];
+      if feasible_both(new_r1, new_r2) { ... }
+  }
+\end{lstlisting}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Risk}: Low. Standard textbook operator.
+\end{itemize}
+
+\subsubsection{[P6] Noise-perturbed greedy repair (third repair operator)}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Add a 3rd repair op to the ALNS pool: greedy insertion with cost perturbation \texttt{Delta' = Delta + xi * d\_max}, xi in [-eta, +eta], eta = 0.1 per [Ropke \& Pisinger 2006].
+  \item \textbf{Why}: Pure greedy and regret-2 explore similar solutions. Noise-greedy adds cheap diversification.
+  \item \textbf{Impact}: Small but compounding -- ALNS adaptive weights will discover when it helps.
+  \item \textbf{Sketch}: Trivial -- wrap existing \texttt{greedy\_insertion} with a cost noise term.
+\end{itemize}
+
+\subsubsection{[P7] Late-Acceptance Hill Climbing for the SA phase}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Replace the geometric-cooling SA in Phase 5 with LAHC (buffer L=1500).
+  \item \textbf{Why}: Removes temperature-tuning. Self-calibrating. Empirically strong on VRP.
+  \item \textbf{Impact}: Medium; comparable to SA when SA is well-tuned, better when it isn't.
+  \item \textbf{Sketch}:
+\end{itemize}
+\begin{lstlisting}
+  let L = 1500;
+  let mut hist = vec![current_pen; L];
+  loop {
+      let k = iter % L;
+      let cand = propose_move();
+      if cand < current_pen || cand < hist[k] { accept(cand); }
+      hist[k] = current_pen;
+      iter += 1;
+  }
+\end{lstlisting}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Risk}: Low. Keep current SA as fallback; A/B test.
+\end{itemize}
+
+\subsubsection{[P8] Adaptive ruin size}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Scale \texttt{destroy\_count} with stagnation: \texttt{q = q\_min + (stag /\allowbreak  stag\_max) * (q\_max -\allowbreak  q\_min)}, reset on improvement.
+  \item \textbf{Why}: Small ruins intensify around current solution; larger ruins kick out of local optima.
+  \item \textbf{Impact}: Small-medium.
+  \item \textbf{Sketch}: Replace the fixed \texttt{[total\_custs/\allowbreak 10, total\_custs*3/\allowbreak 10]} range with a stagnation-scaled target.
+\end{itemize}
+
+\subsubsection{[P9] Bitset-based \texttt{contains} in destroy operators}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Replace \texttt{custs.contains(ref nb)} (O(n)) in \texttt{shaw\_removal} with a \texttt{vec<bool>} or bitset of size n. Same for \texttt{used} tracking in \texttt{worst\_removal}.
+  \item \textbf{Why}: Inside an O(count) loop with O(n) contains check -> O(n\^{}2) destroy. Bitset -> O(count + n).
+  \item \textbf{Impact}: Small (destroy is not the bottleneck), but trivially cheap.
+  \item \textbf{Sketch}: \texttt{let in\_cust\_set = bitset\_from(ref custs);} -- check \texttt{in\_cust\_set[nb]}.
+\end{itemize}
+
+\subsubsection{[P10] Flat distance matrix with stride indexing}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Store \texttt{distance\_matrix} as \texttt{Vec<i32>} indexed by \texttt{i * n + j} rather than \texttt{Vec<Vec<i32>>}.
+  \item \textbf{Why}: One less pointer indirection; contiguous memory improves L1/L2 cache hit rate, particularly for the scan-heavy repair loops.
+  \item \textbf{Impact}: \textasciitilde{}5-15\% raw speedup on inner loops. Small but free.
+  \item \textbf{Risk}: Constant change but touches many call sites -- gate behind a \texttt{#[inline] dm(i, j)} wrapper.
+\end{itemize}
+
+\subsubsection{[P11] Incremental \texttt{penalized\_cost} in the ALNS phase}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Track per-route distances in the ALNS phase like the SA phase already does; compute new \texttt{penalized\_cost} by delta, not full recompute.
+  \item \textbf{Why}: \texttt{penalized\_cost(ref new\_routes)} is O(total nodes) on every iteration.
+  \item \textbf{Impact}: Small-medium -- eliminates a repeated O(n) sweep.
+\end{itemize}
+
+\subsubsection{[P12] Additional destroy operators from the literature}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{Zone/radius removal} -- remove all customers within radius r of a random seed.
+  \item \textbf{Route-pair removal} -- pick two adjacent (by centroid distance) routes and empty both.
+  \item \textbf{Time-window-based removal} -- remove customers whose TW intersects a random interval.
+  \item \textbf{Impact}: Small each, but adaptive weights will find the right mix per instance class.
+\end{itemize}
+
+\subsubsection{[P13] Longer-segment Or-opt (chains of 4-5)}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Current \texttt{try\_or\_opt} uses segment lengths 1-3. Extending to 4-5 opens larger TW-preserving moves. Keep stochastic selection.
+  \item \textbf{Impact}: Small.
+\end{itemize}
+
+\subsubsection{[P14] Instance-class-aware parameter tuning}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: The 24 HG instances are 6 categories x 4 sizes. C1/C2/RC1 benefit from clustering-aware destroy (zone, SISR); R1/R2 benefit from random + worst; RC2 benefits from regret-3. Detect category by geometric clustering of customer positions at start and pre-weight destroy ops accordingly.
+  \item \textbf{Impact}: Small-medium on specific categories.
+\end{itemize}
+
+\subsubsection{[P15] Split-based construction instead of NN}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Build a giant tour by nearest-neighbor (ignoring capacity/TW), then run \textbf{Split} [Prins 2004; Vidal 2014] to partition into feasible routes via shortest path on the route DAG.
+  \item \textbf{Why}: Typically yields a better initial solution than NN + merge; crucial for HGS but also helps warm-starting ALNS.
+  \item \textbf{Impact}: Medium on the initial solution quality; ALNS usually converges faster from a better start.
+  \item \textbf{Risk}: Medium implementation effort.
+\end{itemize}
+
+\subsubsection{[P16] Penalty multiplier adaptation for fleet overflow}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: \texttt{fleet\_penalty} is fixed at 100 000. Make it adaptive: if solution is usually fleet-feasible, lower the penalty to free exploration; if often over fleet, raise. Vidal's feasibility-band adjustment.
+  \item \textbf{Impact}: Small.
+\end{itemize}
+
+\subsubsection{[P17] Record crossover / solution pooling}
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{What}: Keep a population of top-K distinct solutions and occasionally recombine via SREX (\href{https://doi.org/10.1002/net.20338}{Nagata \& Braeysy 2009, \textit{Networks}}). Even K=5 with SREX every 2000 iters adds diversity.
+  \item \textbf{Why}: Push toward HGS-style diversification without the full genetic framework.
+  \item \textbf{Impact}: Medium on long runs (>=20 s).
+  \item \textbf{Risk}: Nontrivial implementation.
+\end{itemize}
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{Suggested Execution Order}
+
+A single agent over several iterations should tackle these in roughly this order, based on ROI and dependency:
+
+
+\begin{enumerate}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \textbf{P0} (budget extension) -- one-line change, unlocks everything else.
+  \item \textbf{P5} (2-opt*) -- replace the broken intra-2-opt.
+  \item \textbf{P9, P11} (bitset + incremental cost) -- easy cleanups, keep compiling.
+  \item \textbf{P2} (neighbor-list pruning) -- feeds into P4, P1.
+  \item \textbf{P1} (concatenation descriptors) -- the big one.
+  \item \textbf{P3} (SISR + blink repair) -- landmark operator.
+  \item \textbf{P4} (SWAP*) -- intensification.
+  \item \textbf{P6, P7} (noise repair + LAHC) -- diversification.
+  \item \textbf{P13, P12} (longer Or-opt, more destroy ops) -- ALNS operator zoo.
+  \item \textbf{P15} (Split construction) -- construction upgrade.
+  \item \textbf{P17} (population + SREX) -- final quality push.
+\end{enumerate}
+
+Every step should be measured against the benchmark harness before shipping.
+
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{Concrete Hypotheses the Agent Can Submit}
+
+Each maps to a testable ALNS hypothesis for the swarm server:
+
+
+\vspace{0.4em}
+\noindent
+\small
+\begin{tabularx}{\columnwidth}{@{}XXX@{}}
+\toprule
+\textbf{Title} & \textbf{Tag} & \textbf{Why it should improve score} \\
+\midrule
+Extend internal deadline from 4.5 s -> 27 s & \texttt{other} & Uses 6x more wall time; ALNS converges monotonically \\
+Replace intra 2-opt with 2-opt* (inter-route, no reversal) & \texttt{local\_search} & Intra 2-opt reverses segments, almost always TW-infeasible \\
+Add SISR string-removal destroy operator & \texttt{construction} & Preserves slack around removed region; dominant on clustered instances \\
+Add greedy-blink repair with beta = 0.01 & \texttt{construction} & Cheap stochastic repair with SISR-like behaviour \\
+Add SWAP* operator with neighbor-list pruning & \texttt{local\_search} & Vidal 2022; catches moves invisible to in-place swap \\
+Vidal concatenation segment descriptors for O(1) moves & \texttt{data\_structure} & 10-30x speedup on inner loops; compounds with everything else \\
+Granular neighbor-list pruning in repair + local search & \texttt{data\_structure} & 10-20x speedup on insertion; Toth-Vigo 2003 \\
+Bitset for \texttt{contains} in Shaw/worst removal & \texttt{data\_structure} & Eliminates O(n\^{}2) inside destroy \\
+Flat stride-indexed distance matrix & \texttt{data\_structure} & Cache-friendly; \textasciitilde{}10\% raw speedup \\
+Noise-perturbed greedy repair & \texttt{construction} & Ropke/Pisinger diversification \\
+Late-Acceptance Hill Climbing instead of SA & \texttt{metaheuristic} & One parameter; robust to tuning \\
+Stagnation-scaled adaptive ruin size & \texttt{metaheuristic} & Balance intensification vs. diversification \\
+Zone / time-window / route-pair destroy operators & \texttt{construction} & Extends operator pool \\
+Longer Or-opt chains (4-5) & \texttt{local\_search} & More movement under TW preservation \\
+Split-based construction (Prins/Vidal) & \texttt{construction} & Better initial solution than NN + merge \\
+Instance-class-aware operator weighting & \texttt{hybrid} & C/RC benefit from clustering-aware destroy, R from random \\
+\bottomrule
+\end{tabularx}
+\vspace{0.4em}
+
+\vspace{0.5em}
+\noindent\rule{\columnwidth}{0.4pt}
+\vspace{0.5em}
+
+\subsection{Sources}
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\setlength{\parskip}{0pt}
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0305054805003023}{Ropke \& Pisinger 2006 -- ALNS foundational paper (\textit{Transportation Science})}
+  \item \href{https://backend.orbit.dtu.dk/ws/portalfiles/portal/3154899/An\%20adaptive\%20large\%20neighborhood\%20search\%20heuristic\%20for\%20the\%20pickup\%20and\%20delivery\%20problem\%20with\%20time\%20windows\_TechRep\_ropke\_pisinger.pdf}{Ropke \& Pisinger 2006 -- DTU tech-report PDF}
+  \item \href{https://pubsonline.informs.org/doi/10.1287/trsc.2019.0914}{Christiaens \& Vanden Berghe 2020 -- SISR (\textit{Transportation Science})}
+  \item \href{https://scispace.com/pdf/slack-induction-by-string-removals-for-vehicle-routing-14gqwirdlp.pdf}{SISR preprint PDF}
+  \item \href{https://arxiv.org/abs/2012.10384}{Vidal 2022 -- HGS-CVRP and SWAP* (arXiv 2012.10384)}
+  \item \href{https://github.com/vidalt/HGS-CVRP}{Vidal HGS-CVRP GitHub reference implementation}
+  \item \href{https://wouterkool.github.io/pdf/paper-kool-hgs-vrptw.pdf}{Kool et al. 2022 -- HGS-VRPTW, DIMACS 2022 winner (PDF)}
+  \item \href{https://arxiv.org/pdf/2403.13795}{Wouda et al. 2024 -- PyVRP (arXiv 2403.13795)}
+  \item \href{https://pyvrp.org/}{PyVRP documentation}
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0377221713005547}{Vidal 2014 -- unified framework for multi-attribute VRPs (\textit{EJOR})}
+  \item \href{https://doi.org/10.1002/net.21693}{Vidal 2016 -- constant-time move evaluations (\textit{Networks})}
+  \item \href{https://pubsonline.informs.org/doi/10.1287/ijoc.4.2.146}{Savelsbergh 1992 -- Forward Time Slack (\textit{INFORMS J. on Computing})}
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0167637795003240}{Kindervater \& Savelsbergh 1997 -- edge exchanges}
+  \item \href{https://pubsonline.informs.org/doi/10.1287/ijoc.15.4.333.24890}{Toth \& Vigo 2003 -- Granular Tabu Search (\textit{INFORMS J. on Computing})}
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0377221716305495}{Burke \& Bykov 2017 -- Late Acceptance Hill Climbing (\textit{EJOR})}
+  \item \href{https://en.wikipedia.org/wiki/Late\_acceptance\_hill\_climbing}{Late Acceptance Hill Climbing -- Wikipedia}
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0021999199964136}{Schrimpf et al. 2000 -- Ruin \& Recreate}
+  \item \href{http://akira.ruc.dk/\textasciitilde{}keld/research/LKH-3/}{Helsgaun LKH-3 project page}
+  \item \href{https://pubsonline.informs.org/doi/10.1287/opre.35.2.254}{Solomon 1987 -- insertion heuristics (\textit{Operations Research})}
+  \item \href{https://doi.org/10.1016/0377-2217(94}{Potvin \& Rousseau 1995 -- 2-opt* inter-route exchange}00114-3)
+  \item \href{https://www.sciencedirect.com/science/article/abs/pii/S0305054803000498}{Prins 2004 -- Split procedure for VRP}
+  \item \href{https://doi.org/10.1002/net.20338}{Nagata \& Braeysy 2009 -- SREX crossover (\textit{Networks})}
+  \item \href{https://cs.brown.edu/research/pubs/pdfs/2004/Bent-2004-TSH.pdf}{Bent \& Van Hentenryck 2004 -- Two-stage hybrid local search (PDF)}
+  \item \href{https://cepac.cheme.cmu.edu/pasi2011/library/cerda/braysy-gendreau-vrp-review.pdf}{Braeysy \& Gendreau -- VRPTW survey (PDF)}
+  \item \href{https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/400-customers/}{SINTEF VRPTW 400-customer benchmark}
+  \item \href{https://www.nature.com/articles/s41598-024-74432-2}{Spark-ALNS 2024 (\textit{Nature Scientific Reports})}
+  \item \href{https://link.springer.com/article/10.1007/s10878-025-01364-6}{PPO-ALNS 2025 (\textit{J. Combinatorial Optimization})}
+  \item \href{https://link.springer.com/article/10.1007/s10732-022-09500-9}{HGS + R\&R hybrid 2022 (\textit{J. Heuristics})}
+  \item \href{https://arxiv.org/pdf/2505.23098}{Learning-to-search multi-TW VRP 2025 (arXiv 2505.23098)}
+  \item \href{https://link.springer.com/chapter/10.1007/11546245\_8}{Fast Ejection Chain VRPTW (Springer)}
+  \item \href{https://logistik.bwl.uni-mainz.de/files/2020/04/dpo\_2020\_03.pdf}{Schneider 2020 -- Granular LS analysis (PDF)}
+\end{itemize}
+
+
+\balance
+\end{document}
