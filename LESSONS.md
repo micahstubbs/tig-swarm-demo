@@ -128,3 +128,34 @@ Same adjustment for the SA fine-tuning phase: 0.9998 → 0.99997.
 **Solution**: Applied `c^(1/k)` scaling to both cooling rates. Also scaled the ALNS weight-update segment length (80 → 500) and reheat interval (1200 → 8000) proportionally so those mechanisms fire at the same relative frequency in the search.
 
 **Prevention**: Whenever changing a solver's time budget, audit all time-dependent parameters: cooling rates, segment lengths, reheat intervals, stagnation thresholds. A checklist: `cooling`, `segment_length`, `reheat_every`, `stag_threshold`, `initial_temperature`. Scale each by the budget ratio.
+
+---
+
+## 2026-04-18T15:30 - Benchmark noise dwarfs single-run optimizer deltas
+
+**Problem**: Added SWAP* (a known-strong VRPTW neighborhood) to the SA operator mix and saw a "+1.29% regression" on the first benchmark comparison. Reflex was to call the experiment failed and revert. But a second pair of runs showed the opposite sign, and three baseline-only runs spanned 7354–7548 (Δ ≈ 2.6%) — wider than the claimed effect.
+
+**Root Cause**: The benchmark harness runs 24 Solomon instances under a 27s wall-clock budget each, with thread-scheduling, system load, and RNG-path variance all contributing to run-to-run score differences. A single A/B comparison with n=1 per arm has no way to distinguish a real ±1% effect from noise; the standard error of the mean is ~1.5% with n=1 and only drops to ~0.7% at n=5.
+
+**Lesson**: Before declaring an optimizer change "worse" (or "better") based on a benchmark delta, measure the baseline's own run-to-run variance. If the variance band overlaps the claimed delta, the comparison is inconclusive — don't revert, don't merge; characterize more runs or design a noise-robust test.
+
+**Code Issue** (decision logic, not source):
+```
+// Before — single-run comparison
+bench(baseline) -> 7354
+bench(new)      -> 7449   # +1.29% "regression"
+-> revert / reject
+
+// After — paired multi-run with variance estimate
+bench(baseline) x3 -> [7354, 7548, 7457]   # sd ≈ 80, CV ≈ 1.3%
+bench(new)      x2 -> [7449, 7582]         # mean 7516
+delta 7516 - 7454 = +62 (+0.8%), inside 1-sigma band
+-> inconclusive; needs more runs OR seed-fixed harness
+```
+
+**Solution**: For this session, reported as "within noise" and committed the code on a branch for future investigation rather than merging or reverting. Logged both arm's full run set in the benchmark-result JSON so a follow-up can extend without re-running from scratch.
+
+**Prevention**:
+- Always run the baseline at least 2–3 times on the same commit before comparing anything. The first delta of the session is the least trustworthy number you will see.
+- When the harness has stochastic components (parallelism, RNG seeds, wall-clock deadlines), a seed-fixed or deadline-iteration-count harness would collapse most of the variance. Worth building once the portfolio of candidate operators grows.
+- In decision-making: "improvement > 1-sigma" is a weak signal; "improvement > 2-sigma with n≥3" is the minimum before shipping a change. Anything below that is a "keep the branch, run more trials later" call, not a merge or revert.
