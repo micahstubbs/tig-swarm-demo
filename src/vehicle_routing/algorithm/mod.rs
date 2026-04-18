@@ -13,8 +13,8 @@ pub fn solve_challenge(
     _hyperparameters: &Option<Map<String, Value>>,
 ) -> Result<()> {
     let start = Instant::now();
-    let deadline = start + Duration::from_millis(4500);
-    let alns_deadline = start + Duration::from_millis(3200);
+    let deadline = start + Duration::from_millis(27000);
+    let alns_deadline = start + Duration::from_millis(19000);
     let n = challenge.num_nodes;
     let dm = &challenge.distance_matrix;
     let fleet = challenge.fleet_size;
@@ -74,13 +74,17 @@ pub fn solve_challenge(
         dist + excess * fleet_penalty
     };
 
+    let mut alns_route_dists: Vec<i32> = routes.iter().map(|r| route_dist(r, dm)).collect();
+    let mut alns_total_dist: i64 = alns_route_dists.iter().map(|&d| d as i64).sum();
+    let excess_fn = |len: usize| -> i64 { if len > fleet { (len - fleet) as i64 } else { 0 } };
     let mut best_routes = routes.clone();
-    let mut best_pen = penalized_cost(&routes);
+    let mut best_pen = alns_total_dist + excess_fn(routes.len()) * fleet_penalty;
     let mut current_pen = best_pen;
+    let mut cached_total_custs: usize = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
 
     // ====== Phase 4: ALNS ======
-    let num_destroy_ops = 4; // random, worst, shaw, route_removal
-    let num_repair_ops = 2;  // greedy, regret
+    let num_destroy_ops = 4;
+    let num_repair_ops = 2;
     let mut d_weights = vec![1.0f64; num_destroy_ops];
     let mut r_weights = vec![1.0f64; num_repair_ops];
     let mut d_scores = vec![0.0f64; num_destroy_ops];
@@ -89,9 +93,10 @@ pub fn solve_challenge(
     let mut r_uses = vec![0u32; num_repair_ops];
 
     let mut temperature = (current_pen as f64).abs().max(1000.0) * 0.04;
-    let cooling = 0.9995;
+    let cooling = 0.99993;
     let mut iters = 0u32;
     let mut seg_iters = 0u32;
+    let mut last_checkpoint = Instant::now();
 
     while Instant::now() < alns_deadline {
         iters += 1;
@@ -100,9 +105,8 @@ pub fn solve_challenge(
         let d_op = roulette_select(&d_weights, rand_lcg(&mut rng));
         let r_op = roulette_select(&r_weights, rand_lcg(&mut rng));
 
-        let total_custs: usize = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
-        let min_d = (total_custs / 10).max(3);
-        let max_d = (total_custs * 3 / 10).max(min_d + 1);
+        let min_d = (cached_total_custs / 10).max(3);
+        let max_d = (cached_total_custs * 3 / 10).max(min_d + 1);
         let destroy_count = min_d + (rand_lcg(&mut rng) as usize) % (max_d - min_d);
 
         let removed = match d_op {
@@ -130,7 +134,9 @@ pub fn solve_challenge(
             _ => regret_insertion(partial, &removed, challenge),
         };
 
-        let new_pen = penalized_cost(&new_routes);
+        let new_rd: Vec<i32> = new_routes.iter().map(|r| route_dist(r, dm)).collect();
+        let new_total: i64 = new_rd.iter().map(|&d| d as i64).sum();
+        let new_pen = new_total + excess_fn(new_routes.len()) * fleet_penalty;
         let delta = new_pen as f64 - current_pen as f64;
 
         let accept = delta < 0.0 || (temperature > 0.5 && {
@@ -149,19 +155,28 @@ pub fn solve_challenge(
 
         if accept {
             routes = new_routes;
+            alns_route_dists = new_rd;
+            alns_total_dist = new_total;
             current_pen = new_pen;
+            cached_total_custs = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
             if current_pen < best_pen {
                 best_pen = current_pen;
                 best_routes = routes.clone();
                 if routes.len() <= fleet {
                     let _ = save_solution(&Solution { routes: routes.clone() });
+                    last_checkpoint = Instant::now();
                 }
             }
         }
 
+        if last_checkpoint.elapsed() > Duration::from_secs(3) && best_routes.len() <= fleet {
+            let _ = save_solution(&Solution { routes: best_routes.clone() });
+            last_checkpoint = Instant::now();
+        }
+
         temperature *= cooling;
 
-        if seg_iters >= 80 {
+        if seg_iters >= 500 {
             let decay = 0.8;
             for i in 0..num_destroy_ops {
                 if d_uses[i] > 0 {
@@ -179,10 +194,13 @@ pub fn solve_challenge(
             }
             seg_iters = 0;
 
-            if iters % 1200 == 0 && current_pen > best_pen {
+            if iters % 8000 == 0 && current_pen > best_pen {
                 temperature = (best_pen as f64).abs().max(1000.0) * 0.02;
                 routes = best_routes.clone();
                 current_pen = best_pen;
+                alns_route_dists = routes.iter().map(|r| route_dist(r, dm)).collect();
+                alns_total_dist = alns_route_dists.iter().map(|&d| d as i64).sum();
+                cached_total_custs = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
             }
         }
     }
@@ -193,6 +211,7 @@ pub fn solve_challenge(
     let mut sa_temp = (best_pen as f64).abs().max(1000.0) * 0.02;
     let mut route_dists: Vec<i32> = routes.iter().map(|r| route_dist(r, dm)).collect();
     let mut stag = 0u32;
+    let mut sa_last_checkpoint = Instant::now();
 
     while Instant::now() < deadline {
         let op = if routes.len() > fleet {
@@ -242,7 +261,12 @@ pub fn solve_challenge(
             }
         }
 
-        sa_temp *= 0.9998;
+        if sa_last_checkpoint.elapsed() > Duration::from_secs(3) && best_routes.len() <= fleet {
+            let _ = save_solution(&Solution { routes: best_routes.clone() });
+            sa_last_checkpoint = Instant::now();
+        }
+
+        sa_temp *= 0.99997;
         stag += 1;
         if stag > 5000 {
             sa_temp = (best_pen as f64).abs().max(1000.0) * 0.015;
@@ -300,15 +324,14 @@ fn worst_removal(routes: &[Vec<usize>], count: usize, dm: &[Vec<i32>], rng: &mut
         }
     }
     costs.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    let mut remaining: Vec<usize> = (0..costs.len()).collect();
     let mut out = Vec::with_capacity(count);
-    let mut used = vec![false; costs.len()];
-    for _ in 0..count.min(costs.len()) {
-        let rem: Vec<usize> = (0..costs.len()).filter(|&i| !used[i]).collect();
-        if rem.is_empty() { break; }
+    for _ in 0..count {
+        if remaining.is_empty() { break; }
         let r = (rand_lcg(rng) % 1_000_000) as f64 / 1_000_000.0;
-        let idx = (r.powf(3.0) * rem.len() as f64).min(rem.len() as f64 - 1.0) as usize;
-        used[rem[idx]] = true;
-        out.push(costs[rem[idx]].1);
+        let idx = (r.powf(3.0) * remaining.len() as f64).min(remaining.len() as f64 - 1.0) as usize;
+        let chosen = remaining.swap_remove(idx);
+        out.push(costs[chosen].1);
     }
     out
 }
@@ -318,28 +341,32 @@ fn shaw_removal(routes: &[Vec<usize>], count: usize, nn: &[Vec<usize>], rng: &mu
         .flat_map(|r| r.iter().filter(|&&x| x != 0).copied()).collect();
     if custs.is_empty() { return Vec::new(); }
 
+    let n = nn.len();
+    let mut in_routes = vec![false; n];
+    for &c in &custs { in_routes[c] = true; }
+
     let seed = custs[(rand_lcg(rng) as usize) % custs.len()];
     let mut out = vec![seed];
-    let mut used = vec![false; nn.len()];
-    used[seed] = true;
+    let mut removed = vec![false; n];
+    removed[seed] = true;
 
     while out.len() < count {
         let ref_c = out[(rand_lcg(rng) as usize) % out.len()];
         let mut found = false;
         for &nb in &nn[ref_c] {
-            if !used[nb] && custs.contains(&nb) {
+            if !removed[nb] && in_routes[nb] {
                 out.push(nb);
-                used[nb] = true;
+                removed[nb] = true;
                 found = true;
                 break;
             }
         }
         if !found {
-            let unrem: Vec<usize> = custs.iter().filter(|&&c| !used[c]).copied().collect();
+            let unrem: Vec<usize> = custs.iter().filter(|&&c| !removed[c]).copied().collect();
             if unrem.is_empty() { break; }
             let c = unrem[(rand_lcg(rng) as usize) % unrem.len()];
             out.push(c);
-            used[c] = true;
+            removed[c] = true;
         }
     }
     out
