@@ -1,0 +1,18 @@
+# Cloudflare Tunnel ingress snippet for tigswarmdemo.com
+#
+# This is a reference-only document. The actual file lives at
+# ~/.cloudflared/config.yml on the host running the tunnel. The tunnel
+# UUID (fa757484-8a18-46e2-b313-1ca149487613) is shared with other sites
+# hosted from this machine (casemirror.ai, ourplaceinthesunset.com).
+#
+# To deploy on a fresh machine:
+#   1. Install cloudflared and authenticate the tunnel.
+#   2. Append the two hostname entries below to your ingress: list,
+#      BEFORE the final `- service: http_status:404` catch-all.
+#   3. Validate: cloudflared --config ~/.cloudflared/config.yml tunnel ingress validate
+#   4. Restart the cloudflared service (e.g. systemctl --user restart opits-cloudflared).
+
+- hostname: tigswarmdemo.com
+  service: http://localhost:8090
+- hostname: www.tigswarmdemo.com
+  service: http://localhost:8090
