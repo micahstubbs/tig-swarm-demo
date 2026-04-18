@@ -10,21 +10,40 @@ export const ROUTE_COLORS = PALETTE.slice(0, 10);
 
 const agentColorMap = new Map<string, string>();
 
-// Deterministic color from the agent key. Using a stable hash instead of
-// first-come-first-served means every panel resolves the same agent to the
-// same palette slot regardless of which one rendered first, which kept the
-// leaderboard dot, chart step, and diversity grid out of sync when they
-// populated in different orders.
+// Agent → palette color. Cached in a module-level Map so every panel on the
+// page resolves the same agent to the same slot regardless of render order —
+// that's what keeps the leaderboard dot, chart step, and diversity grid in
+// sync once a color is picked.
+//
+// The agent's *preferred* slot is the FNV-1a hash of its id mod palette size.
+// This preserves stability across reloads in the common case. When the
+// preferred slot is already claimed by a different agent, we walk forward
+// through the palette and take the first free slot — so uniqueness is
+// guaranteed for the first PALETTE.length agents. Beyond that the palette is
+// exhausted and we accept the hashed collision.
 export function getAgentColor(agentId: string): string {
   const cached = agentColorMap.get(agentId);
   if (cached) return cached;
+
   // FNV-1a 32-bit
   let h = 0x811c9dc5;
   for (let i = 0; i < agentId.length; i++) {
     h ^= agentId.charCodeAt(i);
     h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) | 0;
   }
-  const color = PALETTE[Math.abs(h) % PALETTE.length];
+  const preferred = Math.abs(h) % PALETTE.length;
+
+  const used = new Set(agentColorMap.values());
+  let color = PALETTE[preferred];
+  if (used.size < PALETTE.length) {
+    for (let i = 0; i < PALETTE.length; i++) {
+      const slot = (preferred + i) % PALETTE.length;
+      if (!used.has(PALETTE[slot])) {
+        color = PALETTE[slot];
+        break;
+      }
+    }
+  }
   agentColorMap.set(agentId, color);
   return color;
 }
