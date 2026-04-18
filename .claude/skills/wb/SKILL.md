@@ -14,6 +14,10 @@ Implement an optimization technique from a beads issue in an isolated git worktr
 /wb tig-swarm-demo-gk7
 ```
 
+## Tmux Dispatch Rule
+
+If a coordinator dispatches `/wb` to a tmux-backed agent, the coordinator must send the `/wb ...` text and then send `Cmd+m` to submit it. Do not rely on `Enter` alone.
+
 ## Arguments
 
 - `issue-id`: The beads issue ID containing the optimization technique to implement
