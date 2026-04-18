@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS agents (
     status TEXT DEFAULT 'idle',
     experiments_completed INTEGER DEFAULT 0,
     best_score REAL,
-    last_served_branch_id TEXT,
     runs_since_improvement INTEGER DEFAULT 0,
     improvements INTEGER DEFAULT 0
 );
@@ -27,11 +26,9 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     strategy_tag TEXT NOT NULL,
-    status TEXT DEFAULT 'proposed',
+    status TEXT DEFAULT 'failed',
     fingerprint TEXT NOT NULL,
     parent_hypothesis_id TEXT,
-    branch_agent_id TEXT,
-    claimed_by TEXT,
     created_at TEXT NOT NULL,
     target_best_experiment_id TEXT,
     FOREIGN KEY (agent_id) REFERENCES agents(id)
@@ -94,16 +91,14 @@ CREATE TABLE IF NOT EXISTS best_history (
 );
 """
 
-# Indexes are split out from the main schema because a couple of them
-# reference columns introduced by later migrations (e.g. branch_agent_id).
-# They run *after* the ALTER TABLE migrations in init_db, so they succeed
-# on both fresh and upgraded databases.
+# Indexes are split out from the main schema so they can be applied after
+# ALTER TABLE migrations in init_db, which keeps both fresh and upgraded
+# databases working.
 SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_exp_feasible_score ON experiments(feasible, score);
 CREATE INDEX IF NOT EXISTS idx_exp_agent ON experiments(agent_id);
 CREATE INDEX IF NOT EXISTS idx_hyp_status ON hypotheses(status);
 CREATE INDEX IF NOT EXISTS idx_hyp_fingerprint ON hypotheses(fingerprint);
-CREATE INDEX IF NOT EXISTS idx_hyp_branch ON hypotheses(branch_agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_bests_score ON agent_bests(feasible, score);
 CREATE INDEX IF NOT EXISTS idx_msg_created ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_hyp_agent_target ON hypotheses(agent_id, target_best_experiment_id);
@@ -128,8 +123,6 @@ async def init_db() -> None:
         except Exception:
             pass
         for stmt in (
-            "ALTER TABLE agents ADD COLUMN last_served_branch_id TEXT",
-            "ALTER TABLE hypotheses ADD COLUMN branch_agent_id TEXT",
             "ALTER TABLE agents ADD COLUMN runs_since_improvement INTEGER DEFAULT 0",
             "ALTER TABLE agents ADD COLUMN improvements INTEGER DEFAULT 0",
             "ALTER TABLE hypotheses ADD COLUMN target_best_experiment_id TEXT",
@@ -143,6 +136,14 @@ async def init_db() -> None:
                 await db.commit()
             except Exception:
                 pass
+        # The current model has no "active" hypotheses: every attempt is
+        # recorded as succeeded/failed once evaluated. Legacy statuses are
+        # normalized to failed so old rows don't appear in a third state.
+        await db.execute(
+            "UPDATE hypotheses SET status = 'failed' "
+            "WHERE status IN ('proposed', 'claimed', 'testing')"
+        )
+        await db.commit()
         # 3) Indexes last, *after* the migrations above — some of them
         #    reference columns that only exist post-migration.
         await db.executescript(SCHEMA_INDEXES)
@@ -279,25 +280,6 @@ async def list_agent_bests(
             "FROM agent_bests WHERE feasible = 1 ORDER BY score ASC"
         )
     return [dict(row) for row in await cursor.fetchall()]
-
-
-async def set_last_served_branch(
-    conn: aiosqlite.Connection, agent_id: str, branch_agent_id: str | None
-) -> None:
-    await conn.execute(
-        "UPDATE agents SET last_served_branch_id = ? WHERE id = ?",
-        (branch_agent_id, agent_id),
-    )
-
-
-async def get_last_served_branch(
-    conn: aiosqlite.Connection, agent_id: str
-) -> str | None:
-    cursor = await conn.execute(
-        "SELECT last_served_branch_id FROM agents WHERE id = ?", (agent_id,)
-    )
-    row = await cursor.fetchone()
-    return row["last_served_branch_id"] if row else None
 
 
 async def get_agent_count(

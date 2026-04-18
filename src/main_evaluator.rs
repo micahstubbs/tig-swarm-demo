@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{arg, value_parser, Command};
+use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tig_challenges as challenges;
@@ -41,7 +42,7 @@ fn run_evaluate(challenge: &str, instance_file: &Path, solution_file: &Path) -> 
         "vehicle_routing" => dispatch_evaluate!(vehicle_routing),
         _ => anyhow::bail!("Unknown challenge: {}", challenge),
     };
-    println!("Output: {}", out);
+    println!("{}", json!({ "distance": out }));
     Ok(())
 }
 

@@ -282,12 +282,23 @@ def evaluate_solution(
             )
             output = "error"
         else:
-            for line in result.stdout.strip().split("\n"):
-                if line.startswith("Output:"):
-                    output = line.split(":")[1].strip()
-                    break
-            else:
+            try:
+                payload = json.loads((result.stdout or "").strip())
+                distance = payload.get("distance")
+                if not isinstance(distance, (int, float)):
+                    raise ValueError("missing numeric distance")
+                output = f"{distance:g}"
+            except Exception:
+                # Backward compatibility for older evaluator binaries that
+                # printed "Output: <distance>" instead of JSON.
                 output = "unknown"
+                for line in (result.stdout or "").splitlines():
+                    line = line.strip()
+                    if line.startswith("Output:"):
+                        value = line.split(":", 1)[1].strip()
+                        if value:
+                            output = value
+                        break
             logger.info("Evaluated %s | output=%s", solution_file, output)
         results.append((s, output))
     return results

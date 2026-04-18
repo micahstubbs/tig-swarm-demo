@@ -70,7 +70,7 @@ The agent formulates a specific optimization idea (e.g., "Add or-opt local searc
 | `hybrid` | Combinations of multiple strategies |
 | `data_structure` | Spatial indexing, caching, neighbor lists |
 
-The server rejects hypotheses that are too similar to existing ones, and enforces **strategy diversity** — at most 3 active hypotheses per strategy tag, preventing the swarm from all piling onto one approach.
+Hypotheses are tracked as **attempt outcomes** on an agent's current best branch: each attempt is recorded as either `succeeded` or `failed`, and the list resets naturally when that agent finds a new current best.
 
 ### 4. Implement
 

@@ -6,7 +6,6 @@ import json
 import os
 import sys
 import tempfile
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -101,6 +100,45 @@ def make_route_data(inst_path: str, sol_path: str) -> dict | None:
         route_data["routes"].append({"vehicle_id": i, "path": path})
     return route_data
 
+
+def _first_nonempty_line(*chunks: str) -> str:
+    for chunk in chunks:
+        if not chunk:
+            continue
+        for line in chunk.splitlines():
+            line = line.strip()
+            if line:
+                return line
+    return ""
+
+
+def parse_evaluator_distance(eval_result: subprocess.CompletedProcess) -> tuple[int | None, str | None]:
+    """Parse strict evaluator JSON output.
+
+    Returns `(distance, None)` on success, `(None, error)` on failure.
+    """
+    if eval_result.returncode != 0:
+        msg = _first_nonempty_line(eval_result.stderr, eval_result.stdout)
+        return None, msg or f"evaluator failed (exit {eval_result.returncode})"
+
+    stdout = (eval_result.stdout or "").strip()
+    if not stdout:
+        return None, "evaluator produced no output"
+
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        sample = _first_nonempty_line(stdout)
+        return None, f"invalid evaluator JSON: {sample or 'empty'}"
+
+    distance = payload.get("distance")
+    if not isinstance(distance, (int, float)):
+        return None, "evaluator JSON missing numeric distance"
+    if distance < 0:
+        return None, "evaluator distance must be non-negative"
+
+    return int(round(distance)), None
+
 def run_instance(instance_name, dataset_path, solver, evaluator):
     """Run solver + evaluator for a single instance. Returns a result dict."""
     inst = dataset_path / instance_name
@@ -119,13 +157,9 @@ def run_instance(instance_name, dataset_path, solver, evaluator):
             [evaluator, "vehicle_routing", str(inst), sol_path],
             capture_output=True, text=True, timeout=SOLVER_TIMEOUT,
         )
-        output = (eval_result.stdout + eval_result.stderr).strip()
-
-        if "Error" in output:
-            return {"instance": instance_name, "error": output.split("\n")[0], "num_vehicles": len(routes), "feasible": False}
-
-        nums = re.findall(r"\d+", output)
-        dist = int(nums[0]) if nums else 0
+        dist, err = parse_evaluator_distance(eval_result)
+        if err:
+            return {"instance": instance_name, "error": err, "num_vehicles": len(routes), "feasible": False}
         rd = make_route_data(str(inst), sol_path)
         return {"instance": instance_name, "dist": dist, "num_vehicles": len(routes), "feasible": True, "route_data": rd}
 
@@ -138,11 +172,9 @@ def run_instance(instance_name, dataset_path, solver, evaluator):
                     [evaluator, "vehicle_routing", str(inst), sol_path],
                     capture_output=True, text=True, timeout=SOLVER_TIMEOUT,
                 )
-                output = (eval_result.stdout + eval_result.stderr).strip()
-                if "Error" in output:
-                    return {"instance": instance_name, "error": output.split("\n")[0], "num_vehicles": len(routes), "feasible": False}
-                nums = re.findall(r"\d+", output)
-                dist = int(nums[0]) if nums else 0
+                dist, err = parse_evaluator_distance(eval_result)
+                if err:
+                    return {"instance": instance_name, "error": err, "num_vehicles": len(routes), "feasible": False}
                 rd = make_route_data(str(inst), sol_path)
                 return {"instance": instance_name, "dist": dist, "num_vehicles": len(routes), "feasible": True, "route_data": rd}
             except Exception:

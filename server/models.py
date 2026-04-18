@@ -39,7 +39,6 @@ class HypothesisCreate(BaseModel):
         "other",
     ]
     parent_hypothesis_id: Optional[str] = None
-    auto_claim: bool = True
 
 
 class ExperimentCreate(BaseModel):

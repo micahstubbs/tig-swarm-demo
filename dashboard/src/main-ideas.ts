@@ -51,9 +51,8 @@ async function loadInitialState(apiUrl: string) {
     if (!res.ok) return;
     const state = await res.json();
 
-    // Replay all hypotheses (active, failed, succeeded)
+    // Replay all hypothesis outcomes (no active status model).
     const allHyps = [
-      ...(state.active_hypotheses || []),
       ...(state.failed_hypotheses || []),
       ...(state.succeeded_hypotheses || []),
     ];

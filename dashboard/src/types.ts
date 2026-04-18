@@ -33,7 +33,6 @@ export interface LeaderboardEntry {
 // WebSocket message types
 export type WSMessage =
   | AgentJoined
-  | AgentOffline
   | HypothesisProposed
   | HypothesisStatusChanged
   | ExperimentPublished
@@ -46,13 +45,6 @@ export type WSMessage =
 
 export interface AgentJoined {
   type: "agent_joined";
-  agent_id: string;
-  agent_name: string;
-  timestamp: string;
-}
-
-export interface AgentOffline {
-  type: "agent_offline";
   agent_id: string;
   agent_name: string;
   timestamp: string;

@@ -17,7 +17,7 @@ from models import (
     ExperimentResponse, IterationResponse, new_id, improvement_pct,
 )
 from names import generate_agent_name, load_used_names
-from dedup import fingerprint, check_duplicate, check_saturation
+from dedup import fingerprint, check_duplicate
 import db
 
 logger = logging.getLogger("swarm")
@@ -286,6 +286,9 @@ async def get_state(agent_id: str | None = None):
         total_exp = (await (await conn.execute(
             "SELECT COUNT(*) as c FROM experiments"
         )).fetchone())["c"]
+        total_hyp = (await (await conn.execute(
+            "SELECT COUNT(*) as c FROM hypotheses"
+        )).fetchone())["c"]
 
         # ── Agent-specific view ──
         if agent_id is not None:
@@ -369,6 +372,7 @@ async def get_state(agent_id: str | None = None):
                 "active_agents": active,
                 "total_agents": total_agents,
                 "total_experiments": total_exp,
+                "hypotheses_count": total_hyp,
                 "failed_hypotheses": [
                     {"id": h["id"], "title": h["title"],
                      "strategy_tag": h["strategy_tag"],
@@ -397,16 +401,8 @@ async def get_state(agent_id: str | None = None):
         recent_experiments = [dict(row) for row in await cursor.fetchall()]
 
         cursor = await conn.execute(
-            """SELECT h.*, a.name as agent_name
-               FROM hypotheses h JOIN agents a ON a.id = h.agent_id
-               WHERE h.status IN ('proposed', 'claimed', 'testing')
-               ORDER BY h.created_at DESC"""
-        )
-        active_hypotheses = [dict(row) for row in await cursor.fetchall()]
-
-        cursor = await conn.execute(
             """SELECT h.id, h.title, h.strategy_tag, h.description,
-                      h.status, h.branch_agent_id, a.name as agent_name
+                      h.status, a.name as agent_name
                FROM hypotheses h JOIN agents a ON a.id = h.agent_id
                WHERE h.status = 'failed'
                ORDER BY h.created_at DESC LIMIT 20"""
@@ -415,7 +411,7 @@ async def get_state(agent_id: str | None = None):
 
         cursor = await conn.execute(
             """SELECT h.id, h.title, h.strategy_tag, h.description,
-                      h.status, h.branch_agent_id, a.name as agent_name
+                      h.status, a.name as agent_name
                FROM hypotheses h JOIN agents a ON a.id = h.agent_id
                WHERE h.status = 'succeeded'
                ORDER BY h.created_at DESC LIMIT 10"""
@@ -441,13 +437,11 @@ async def get_state(agent_id: str | None = None):
         "best_algorithm_code": served["algorithm_code"] if served else SEED_ALGORITHM_CODE,
         "best_experiment_id": served["id"] if served else None,
         "best_route_data": json.loads(served["route_data"]) if served and served["route_data"] else None,
-        "served_branch_agent_id": None,
-        "served_branch_agent_name": None,
-        "served_branch_score": None,
         "num_instances": num_instances,
         "active_agents": active,
         "total_agents": total_agents,
         "total_experiments": total_exp,
+        "hypotheses_count": total_hyp,
         "recent_experiments": [
             {
                 "id": e["id"],
@@ -468,27 +462,21 @@ async def get_state(agent_id: str | None = None):
             }
             for e in recent_experiments
         ],
-        "active_hypotheses": [
-            {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
-             "status": h["status"], "agent_name": h["agent_name"],
-             "description": h["description"], "parent_hypothesis_id": h.get("parent_hypothesis_id"),
-             "agent_id": h["agent_id"], "branch_agent_id": h.get("branch_agent_id")}
-            for h in active_hypotheses
-        ],
+        # Kept for dashboard compatibility; the model no longer has
+        # "active/in-flight" hypotheses, only succeeded/failed attempts.
+        "active_hypotheses": [],
         "failed_hypotheses": [
             {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
              "status": h["status"], "agent_name": h["agent_name"], "description": h["description"],
              "parent_hypothesis_id": h.get("parent_hypothesis_id"),
-             "agent_id": h.get("agent_id", ""),
-             "branch_agent_id": h.get("branch_agent_id")}
+             "agent_id": h.get("agent_id", "")}
             for h in failed_hypotheses
         ],
         "succeeded_hypotheses": [
             {"id": h["id"], "title": h["title"], "strategy_tag": h["strategy_tag"],
              "status": h["status"], "agent_name": h["agent_name"], "description": h["description"],
              "parent_hypothesis_id": h.get("parent_hypothesis_id"),
-             "agent_id": h.get("agent_id", ""),
-             "branch_agent_id": h.get("branch_agent_id")}
+             "agent_id": h.get("agent_id", "")}
             for h in succeeded_hypotheses
         ],
         "leaderboard": leaderboard,
@@ -675,9 +663,25 @@ async def create_iteration(req: IterationCreate):
 @app.post("/api/hypotheses")
 async def create_hypothesis(req: HypothesisCreate):
     async with db.connect() as conn:
-        cursor = await conn.execute(
-            "SELECT id, title, strategy_tag, status, fingerprint FROM hypotheses"
+        my_best = await db.get_agent_best(conn, req.agent_id)
+        target_best_experiment_id = (
+            my_best["experiment_id"] if my_best else None
         )
+
+        if target_best_experiment_id is None:
+            cursor = await conn.execute(
+                """SELECT id, title, strategy_tag, status, fingerprint
+                   FROM hypotheses
+                   WHERE agent_id = ? AND target_best_experiment_id IS NULL""",
+                (req.agent_id,),
+            )
+        else:
+            cursor = await conn.execute(
+                """SELECT id, title, strategy_tag, status, fingerprint
+                   FROM hypotheses
+                   WHERE agent_id = ? AND target_best_experiment_id = ?""",
+                (req.agent_id, target_best_experiment_id),
+            )
         all_hyps = [dict(row) for row in await cursor.fetchall()]
 
         dup = check_duplicate(req.title, req.strategy_tag, all_hyps)
@@ -688,32 +692,25 @@ async def create_hypothesis(req: HypothesisCreate):
                 similar_status=dup["status"],
             ).model_dump())
 
-        if check_saturation(req.strategy_tag, all_hyps):
-            raise HTTPException(status_code=409, detail={
-                "error": "strategy_saturated",
-                "strategy_tag": req.strategy_tag,
-                "suggestion": f"Too many active hypotheses in '{req.strategy_tag}'. Try a different strategy.",
-            })
-
         hyp_id = new_id()
         fp = fingerprint(req.title, req.strategy_tag)
         timestamp = now()
-        status = "claimed" if req.auto_claim else "proposed"
-        claimed_by = req.agent_id if req.auto_claim else None
-
-        # Attach the hypothesis to whichever branch the server most
-        # recently served to this agent. NULL means "seed/unknown" and
-        # scopes the hypothesis to cold-start state. There is no caller-
-        # supplied branch override — this keeps the agent protocol tiny.
-        branch_agent_id = await db.get_last_served_branch(conn, req.agent_id)
+        # Legacy endpoint compatibility:
+        # this route only creates a hypothesis row, while /api/experiments
+        # later determines its real outcome. There is no "active" status.
+        # Until evaluated, keep it as failed-by-default; /api/experiments
+        # will overwrite to succeeded when it improves the agent's own best.
+        status = "failed"
 
         await conn.execute(
             """INSERT INTO hypotheses
                (id, agent_id, title, description, strategy_tag, status, fingerprint,
-                parent_hypothesis_id, branch_agent_id, claimed_by, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                parent_hypothesis_id, created_at,
+                target_best_experiment_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (hyp_id, req.agent_id, req.title, req.description, req.strategy_tag,
-             status, fp, req.parent_hypothesis_id, branch_agent_id, claimed_by, timestamp),
+             status, fp, req.parent_hypothesis_id, timestamp,
+             target_best_experiment_id),
         )
         await conn.commit()
 
@@ -728,7 +725,6 @@ async def create_hypothesis(req: HypothesisCreate):
         "description": req.description,
         "strategy_tag": req.strategy_tag,
         "parent_hypothesis_id": req.parent_hypothesis_id,
-        "branch_agent_id": branch_agent_id,
         "timestamp": timestamp,
     })
 

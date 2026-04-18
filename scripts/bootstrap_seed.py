@@ -106,7 +106,6 @@ def main() -> int:
                 "score every other hypothesis builds on."
             ),
             "strategy_tag": "construction",
-            "auto_claim": True,
         },
     )
     hyp_id = hyp["hypothesis_id"]

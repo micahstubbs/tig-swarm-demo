@@ -97,6 +97,10 @@ async function loadInitialState(apiUrl: string) {
       score: number;
       created_at: string;
     }> = replayRes.ok ? await replayRes.json() : [];
+    const hypothesisCount =
+      state.hypotheses_count ??
+      ((state.failed_hypotheses?.length || 0) +
+        (state.succeeded_hypotheses?.length || 0));
 
     // Seed the chart with the entire trajectory, not just recent_experiments.
     chartPanel.seedHistory(replay);
@@ -116,7 +120,7 @@ async function loadInitialState(apiUrl: string) {
       active_agents: state.active_agents,
       total_agents: state.total_agents ?? state.active_agents,
       total_experiments: state.total_experiments ?? state.recent_experiments?.length ?? 0,
-      hypotheses_count: state.active_hypotheses?.length || 0,
+      hypotheses_count: hypothesisCount,
       best_score: state.best_score,
       baseline_score: state.baseline_score,
       num_instances: state.num_instances || 1,
@@ -173,8 +177,12 @@ async function loadInitialState(apiUrl: string) {
       });
     }
 
-    // Replay active hypotheses as feed items
-    for (const hyp of state.active_hypotheses || []) {
+    // Replay hypothesis history (no active status model: only succeeded/failed).
+    const allHyps = [
+      ...(state.succeeded_hypotheses || []),
+      ...(state.failed_hypotheses || []),
+    ];
+    for (const hyp of allHyps) {
       handleMessage({
         type: "hypothesis_proposed",
         hypothesis_id: hyp.id || "",
@@ -186,6 +194,15 @@ async function loadInitialState(apiUrl: string) {
         parent_hypothesis_id: hyp.parent_hypothesis_id || null,
         timestamp: new Date().toISOString(),
       });
+      if (hyp.status === "succeeded" || hyp.status === "failed") {
+        handleMessage({
+          type: "hypothesis_status_changed",
+          hypothesis_id: hyp.id || "",
+          new_status: hyp.status,
+          agent_name: hyp.agent_name,
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
 
     soundEnabled = true;

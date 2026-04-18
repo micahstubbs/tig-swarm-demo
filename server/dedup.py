@@ -32,13 +32,3 @@ def check_duplicate(
         if h["strategy_tag"] == new_tag and jaccard_tokens(new_title, h["title"]) > 0.6:
             return h
     return None
-
-
-def check_saturation(tag: str, existing: list[dict], max_per_tag: int = 3) -> bool:
-    """Check if a strategy tag has too many active hypotheses."""
-    active_statuses = {"proposed", "claimed", "testing"}
-    count = sum(
-        1 for h in existing
-        if h["strategy_tag"] == tag and h["status"] in active_statuses
-    )
-    return count >= max_per_tag
