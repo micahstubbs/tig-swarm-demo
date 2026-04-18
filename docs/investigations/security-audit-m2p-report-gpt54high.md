@@ -20,6 +20,8 @@ The backlog now consists of three remediation tracks:
 
 ### Epic A: Existing frontend/admin remediation track
 
+This track already existed in Beads before this M2P pass. At the time of this report finalization, those issues have been closed in the tracker by recent remediation work and are listed here so the audit-to-issue mapping stays complete.
+
 - `tig-swarm-demo-h43` — Epic: Fix 4 HIGH severity security vulnerabilities from audit
 - `tig-swarm-demo-ytr` — Extract shared HTML escape utility from `strategy-leaderboard.ts`
 - `tig-swarm-demo-dwo` — SA-001: Fix stored XSS in `ideas-tree.ts` via `innerHTML`
@@ -30,6 +32,8 @@ The backlog now consists of three remediation tracks:
 
 ### Epic B: New identity/access-control/disclosure track
 
+This M2P pass created the open issues in this track for the unresolved identity, authorization, and disclosure findings.
+
 - `tig-swarm-demo-jxg` — Epic: Fix swarm identity, access control, and disclosure vulnerabilities from audit
 - `tig-swarm-demo-fa5` — SA-005: Require authenticated agent credentials on all agent-scoped routes
 - `tig-swarm-demo-mii` — SA-006: Enable SQLite foreign keys and reject orphan writes for unknown agents
@@ -37,6 +41,8 @@ The backlog now consists of three remediation tracks:
 - `tig-swarm-demo-s28` — SA-008: Restrict CORS and harden admin endpoint exposure
 
 ### Epic C: New resource/dependency hardening track
+
+This M2P pass created the open issues in this track for the unresolved capacity and dependency work.
 
 - `tig-swarm-demo-rq3` — Epic: Harden request limits and dependency exposure from audit
 - `tig-swarm-demo-mlo` — SA-009: Add payload size limits and clamp unbounded list endpoints
@@ -162,8 +168,9 @@ Rationale:
 
 All audit findings are now represented in Beads:
 
-- 3 epics
-- 11 actionable issues
+- 3 audit epics total
+- 11 audit-linked issues total
+- 7 new open issues created in this M2P pass
 - 1 explicit cross-issue dependency (`tig-swarm-demo-pkt` blocked by `tig-swarm-demo-fa5`)
 
-This backlog is sufficient to drive remediation from critical containment through dependency cleanup.
+This backlog is sufficient to drive the remaining remediation from critical containment through dependency cleanup while preserving the already-completed audit work in the tracker history.
