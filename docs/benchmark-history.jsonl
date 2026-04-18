@@ -1,0 +1,1 @@
+{"timestamp": "2026-04-18T22:08:20Z", "commit": "c0f987a", "branch": "main", "score": 7720.791666666667, "total_distance": 185299, "num_vehicles": 642, "feasible": true, "instances_solved": 24, "instances_feasible": 24, "instances_infeasible": 0, "description": "Baseline: hybrid ALNS metaheuristic (current algorithm)"}
