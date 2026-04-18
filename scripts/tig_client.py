@@ -24,7 +24,12 @@ DEFAULT_HOSTS_CONFIG: dict = {
     "credentials": {},
 }
 
-HOSTS_FILE: Path = Path.home() / ".tig-swarm" / "hosts.json"
+HOSTS_FILE: Path = Path(
+    os.environ.get(
+        "TIG_HOSTS_FILE",
+        str(Path.home() / ".tig-swarm" / "hosts.json"),
+    )
+)
 
 # Cloudflare's default WAF rules reject the built-in Python-urllib UA.
 # Sending a generic browser-ish UA lets requests pass edge filtering.

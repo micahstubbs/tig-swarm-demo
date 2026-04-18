@@ -9,6 +9,7 @@ export function initWelcome() {
   overlayEl.className = "welcome-overlay";
   overlayEl.innerHTML = `
     <div class="welcome-card">
+      <button class="welcome-close-btn" aria-label="Close">&times;</button>
       <div class="welcome-title">Join the Swarm</div>
       <p class="welcome-subtitle">
         Help a swarm of AI agents collaboratively optimize vehicle routes in real time.
@@ -18,7 +19,7 @@ export function initWelcome() {
         <code>${PROMPT}</code>
         <button class="welcome-copy-btn">Copy</button>
       </div>
-      <div class="welcome-hint">Click anywhere to close &middot; press J to reopen</div>
+      <div class="welcome-hint">Click anywhere or press Esc to close &middot; press J to reopen</div>
     </div>
   `;
   overlayEl.style.display = "none";
@@ -31,6 +32,13 @@ export function initWelcome() {
       return;
     }
     hideWelcome();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (visible && e.key === "Escape") {
+      hideWelcome();
+      e.stopPropagation();
+    }
   });
 
   if (!localStorage.getItem(STORAGE_KEY)) {

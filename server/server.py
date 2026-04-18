@@ -542,9 +542,10 @@ async def create_iteration(req: IterationCreate):
                     experiments_completed = experiments_completed + 1,
                     runs_since_improvement = 0,
                     improvements = improvements + 1,
-                    best_score = ?
+                    best_score = ?,
+                    last_heartbeat = ?
                    WHERE id = ?""",
-                (req.score, req.agent_id),
+                (req.score, timestamp, req.agent_id),
             )
             await db.upsert_agent_best(
                 conn, agent_id=req.agent_id, experiment_id=exp_id,
@@ -557,9 +558,10 @@ async def create_iteration(req: IterationCreate):
             await conn.execute(
                 """UPDATE agents SET
                     experiments_completed = experiments_completed + 1,
-                    runs_since_improvement = runs_since_improvement + 1
+                    runs_since_improvement = runs_since_improvement + 1,
+                    last_heartbeat = ?
                    WHERE id = ?""",
-                (req.agent_id,),
+                (timestamp, req.agent_id),
             )
 
         agent_name = await get_agent_name(conn, req.agent_id)
@@ -676,6 +678,13 @@ async def create_hypothesis(req: HypothesisCreate):
              status, fp, req.parent_hypothesis_id, timestamp,
              target_best_experiment_id),
         )
+        # Publishing a hypothesis counts as liveness — bump the heartbeat so
+        # the leaderboard "active" flag reflects real activity, not just
+        # whether the agent happens to be polling /api/agents/<id>/heartbeat.
+        await conn.execute(
+            "UPDATE agents SET last_heartbeat = ? WHERE id = ?",
+            (timestamp, req.agent_id),
+        )
         await conn.commit()
 
         agent_name = await get_agent_name(conn, req.agent_id)
@@ -783,9 +792,10 @@ async def create_experiment(req: ExperimentCreate):
                     experiments_completed = experiments_completed + 1,
                     runs_since_improvement = 0,
                     improvements = improvements + 1,
-                    best_score = ?
+                    best_score = ?,
+                    last_heartbeat = ?
                    WHERE id = ?""",
-                (req.score, req.agent_id),
+                (req.score, timestamp, req.agent_id),
             )
             await db.upsert_agent_best(
                 conn,
@@ -803,9 +813,10 @@ async def create_experiment(req: ExperimentCreate):
             await conn.execute(
                 """UPDATE agents SET
                     experiments_completed = experiments_completed + 1,
-                    runs_since_improvement = runs_since_improvement + 1
+                    runs_since_improvement = runs_since_improvement + 1,
+                    last_heartbeat = ?
                    WHERE id = ?""",
-                (req.agent_id,),
+                (timestamp, req.agent_id),
             )
 
         agent_name = await get_agent_name(conn, req.agent_id)
@@ -935,6 +946,12 @@ async def create_message(req: MessageCreate):
             "INSERT INTO messages (id, agent_id, agent_name, content, msg_type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (msg_id, req.agent_id, req.agent_name, req.content, req.msg_type, timestamp),
         )
+        # Posting a chat message counts as liveness too.
+        if req.agent_id:
+            await conn.execute(
+                "UPDATE agents SET last_heartbeat = ? WHERE id = ?",
+                (timestamp, req.agent_id),
+            )
         await conn.commit()
 
     await manager.broadcast({

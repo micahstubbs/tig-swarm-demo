@@ -363,9 +363,31 @@ export class ChartPanel implements Panel {
     }
   }
 
+  // Placeholder text centered in the chart area. Used when there is no data
+  // yet, so the panel doesn't render as a blank rectangle (which visitors
+  // mistake for a broken chart).
+  private renderEmptyState(label: string) {
+    const m = this.margin;
+    const w = this.width - m.left - m.right;
+    const h = this.height - m.top - m.bottom;
+    const chartG = this.g.append("g")
+      .attr("transform", `translate(${m.left},${m.top})`);
+    chartG.append("text")
+      .attr("x", w / 2)
+      .attr("y", h / 2)
+      .attr("fill", "#3d4a5c")
+      .attr("font-size", "11px")
+      .attr("font-family", "var(--mono)")
+      .attr("text-anchor", "middle")
+      .text(label);
+  }
+
   private redrawGlobal() {
     this.g.selectAll("*").remove();
-    if (this.globalData.length < 1) return;
+    if (this.globalData.length < 1) {
+      this.renderEmptyState("Waiting for first feasible experiment…");
+      return;
+    }
 
     const m = this.margin;
     const w = this.width - m.left - m.right;
