@@ -38,21 +38,6 @@ pub fn solve_challenge(
     let max_nn = 30.min(n - 1);
     let shaw_neighbors: Vec<Vec<usize>> = (0..n).map(|i| {
         if i == 0 { return Vec::new(); }
-        let mut scored: Vec<(i64, usize)> = (1..n)
-            .filter(|&j| j != i)
-            .map(|j| {
-                let dist_rel = dm[i][j] as i64;
-                let tw_overlap = 0i64.max(
-                    challenge.due_times[i].min(challenge.due_times[j]) as i64
-                    - challenge.ready_times[i].max(challenge.ready_times[j]) as i64
-                );
-                // Lower score = more related (close distance, overlapping time windows)
-                dist_rel * 2 - tw_overlap
-            })
-            .enumerate()
-            .map(|(idx, score)| (score, idx + 1)) // idx+1 because we skip j==i
-            .collect();
-        // Rebuild: we want customer indices, not raw enumerate indices
         let mut scored2: Vec<(i64, usize)> = (1..n)
             .filter(|&j| j != i)
             .map(|j| {
@@ -74,11 +59,10 @@ pub fn solve_challenge(
         dist + excess * fleet_penalty
     };
 
-    let mut alns_route_dists: Vec<i32> = routes.iter().map(|r| route_dist(r, dm)).collect();
-    let mut alns_total_dist: i64 = alns_route_dists.iter().map(|&d| d as i64).sum();
+    let initial_total_dist: i64 = routes.iter().map(|r| route_dist(r, dm) as i64).sum();
     let excess_fn = |len: usize| -> i64 { if len > fleet { (len - fleet) as i64 } else { 0 } };
     let mut best_routes = routes.clone();
-    let mut best_pen = alns_total_dist + excess_fn(routes.len()) * fleet_penalty;
+    let mut best_pen = initial_total_dist + excess_fn(routes.len()) * fleet_penalty;
     let mut current_pen = best_pen;
     let mut cached_total_custs: usize = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
 
@@ -155,8 +139,6 @@ pub fn solve_challenge(
 
         if accept {
             routes = new_routes;
-            alns_route_dists = new_rd;
-            alns_total_dist = new_total;
             current_pen = new_pen;
             cached_total_custs = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
             if current_pen < best_pen {
@@ -198,8 +180,6 @@ pub fn solve_challenge(
                 temperature = (best_pen as f64).abs().max(1000.0) * 0.02;
                 routes = best_routes.clone();
                 current_pen = best_pen;
-                alns_route_dists = routes.iter().map(|r| route_dist(r, dm)).collect();
-                alns_total_dist = alns_route_dists.iter().map(|&d| d as i64).sum();
                 cached_total_custs = routes.iter().map(|r| r.len().saturating_sub(2)).sum();
             }
         }
@@ -628,39 +608,6 @@ fn try_two_opt_star(routes: &[Vec<usize>], rd: &[i32], ch: &Challenge, rng: &mut
     }) }
 }
 
-fn try_relocate(routes: &[Vec<usize>], rd: &[i32], ch: &Challenge, rng: &mut u64, dm: &[Vec<i32>], fleet: usize, fp: i64) -> SaResult {
-    if routes.len() < 2 { return SaResult::Failed; }
-    let src = (rand_lcg(rng) as usize) % routes.len();
-    if routes[src].len() <= 2 { return SaResult::Failed; }
-    let pos = 1 + (rand_lcg(rng) as usize) % (routes[src].len() - 2);
-    let cust = routes[src][pos];
-    let dst = loop { let d = (rand_lcg(rng) as usize) % routes.len(); if d != src { break d; } };
-    let dl: i32 = routes[dst].iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum::<i32>() + ch.demands[cust];
-    if dl > ch.max_capacity { return SaResult::Failed; }
-
-    let mut bi = 1; let mut bc = i32::MAX;
-    for ins in 1..routes[dst].len() {
-        let c = dm[routes[dst][ins-1]][cust] + dm[cust][routes[dst][ins]] - dm[routes[dst][ins-1]][routes[dst][ins]];
-        if c < bc { bc = c; bi = ins; }
-    }
-
-    let mut ns = routes[src].clone(); ns.remove(pos);
-    let mut nd = routes[dst].clone(); nd.insert(bi, cust);
-    if ns.len() > 2 && !is_feasible(&ns, ch) { return SaResult::Failed; }
-    if !is_feasible(&nd, ch) { return SaResult::Failed; }
-
-    let nsd = if ns.len() > 2 { route_dist(&ns, dm) } else { 0 };
-    let ndd = route_dist(&nd, dm);
-    let mut dp = nsd as i64 + ndd as i64 - rd[src] as i64 - rd[dst] as i64;
-    if ns.len() <= 2 && routes.len() > fleet { dp -= fp; }
-
-    SaResult::Delta { delta_pen: dp, apply: Box::new(move |rs: &mut Vec<Vec<usize>>, ds: &mut Vec<i32>| {
-        rs[src] = ns; ds[src] = nsd; rs[dst] = nd; ds[dst] = ndd;
-        let mut i = 0;
-        while i < rs.len() { if rs[i].len() <= 2 { rs.remove(i); ds.remove(i); } else { i += 1; } }
-    }) }
-}
-
 fn try_exchange(routes: &[Vec<usize>], rd: &[i32], ch: &Challenge, rng: &mut u64, dm: &[Vec<i32>]) -> SaResult {
     if routes.len() < 2 { return SaResult::Failed; }
     let r1 = (rand_lcg(rng) as usize) % routes.len();
@@ -902,15 +849,10 @@ fn route_dist(route: &[usize], dm: &[Vec<i32>]) -> i32 {
     (1..route.len()).map(|i| dm[route[i-1]][route[i]]).sum()
 }
 
-fn total_distance(routes: &[Vec<usize>], dm: &[Vec<i32>]) -> i64 {
-    routes.iter().map(|r| route_dist(r, dm) as i64).sum()
-}
-
 // ---- Route metadata for O(1) move evaluation ----
 
 struct RouteMeta {
     load: i32,
-    dist: i32,
     earliest_depart: Vec<i32>,
     latest_arrive: Vec<i32>,
 }
@@ -920,8 +862,6 @@ impl RouteMeta {
         let dm = &ch.distance_matrix;
         let n = route.len();
         let mut load = 0i32;
-        let dist = route_dist(route, dm);
-
         let mut earliest_depart = vec![0i32; n];
         for i in 1..n {
             let prev = route[i - 1];
@@ -946,7 +886,7 @@ impl RouteMeta {
             latest_arrive[i] = from_downstream.min(ch.due_times[curr]);
         }
 
-        Self { load, dist, earliest_depart, latest_arrive }
+        Self { load, earliest_depart, latest_arrive }
     }
 
     fn check_removal_feasible(&self, route: &[usize], pos: usize, dm: &[Vec<i32>]) -> bool {
@@ -1063,7 +1003,6 @@ mod tests {
         assert!(is_feasible(&route, &ch));
         let meta = RouteMeta::compute(&route, &ch);
         assert_eq!(meta.load, 15);
-        assert_eq!(meta.dist, route_dist(&route, &ch.distance_matrix));
         assert_eq!(meta.earliest_depart[0], 0);
         assert_eq!(meta.earliest_depart[1], 10 + 10); // arrive 10, ready 0, +service 10
     }
@@ -1170,8 +1109,6 @@ mod tests {
         let dm = &ch.distance_matrix;
         let routes = vec![vec![0, 1, 2, 3, 0], vec![0, 4, 5, 0]];
         let rd: Vec<i32> = routes.iter().map(|r| route_dist(r, dm)).collect();
-        let metas: Vec<RouteMeta> = routes.iter().map(|r| RouteMeta::compute(r, &ch)).collect();
-
         // Manually relocate: move customer 2 from route 0 to route 1
         let src = 0; let pos = 2; let cust = 2;
         let dst = 1; let bi = 2; // insert between 4 and 5
