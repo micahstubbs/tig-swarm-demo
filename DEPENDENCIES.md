@@ -102,7 +102,7 @@ pip install -r requirements.txt
 Run the server locally:
 
 ```bash
-uvicorn server:app --port 8080
+uvicorn server:app --port 8090
 ```
 
 ---

@@ -84,7 +84,7 @@ Lower is better. The score is a per-instance average. Infeasible instances get a
 # Server
 cd server
 pip install -r requirements.txt
-uvicorn server:app --port 8080
+uvicorn server:app --port 8090
 
 # Dashboard
 cd dashboard

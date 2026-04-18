@@ -21,7 +21,7 @@ cargo test --features vehicle_routing
 python3 scripts/benchmark.py
 
 # Run the coordination server locally
-cd server && pip install -r requirements.txt && uvicorn server:app --port 8080
+cd server && pip install -r requirements.txt && uvicorn server:app --port 8090
 
 # Run the dashboard dev server
 cd dashboard && npm install && npm run dev  # localhost:5173, add ?mock=true for no-server mode
@@ -59,6 +59,17 @@ Three components: a **Rust solver** (what agents optimize), a **Python/FastAPI c
 ### Datasets
 
 - `datasets/vehicle_routing/HG/` — 24 Solomon/Homberger benchmark instances (400 nodes each): R1, R2, RC1, RC2, C1, C2 categories
+
+## Port Assignments
+
+Registered with the local port-registry service (`portctl`):
+
+| Service | Port | Service name in registry |
+|---------|------|--------------------------|
+| Coordination server (FastAPI/uvicorn) | 8090 | `tig-swarm-demo-server` |
+| Dashboard (Vite dev) | 5173 | `tig-swarm-demo-dashboard` |
+
+Port 8080 is taken by another process on this machine — use 8090 for local dev.
 
 ## Key Constraints
 
