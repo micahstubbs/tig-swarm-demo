@@ -130,8 +130,8 @@ pub fn solve_challenge(
         partial.retain(|r| r.len() > 2);
 
         let new_routes = match r_op {
-            0 => greedy_insertion(partial, &removed, challenge),
-            _ => regret_insertion(partial, &removed, challenge),
+            0 => greedy_insertion(partial, &removed, challenge, &shaw_neighbors),
+            _ => regret_insertion(partial, &removed, challenge, &shaw_neighbors),
         };
 
         let new_rd: Vec<i32> = new_routes.iter().map(|r| route_dist(r, dm)).collect();
@@ -391,20 +391,36 @@ fn route_removal(routes: &[Vec<usize>], target_count: usize, rng: &mut u64) -> V
 
 // ---- Repair operators ----
 
-fn greedy_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challenge) -> Vec<Vec<usize>> {
+fn greedy_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challenge, shaw_nn: &[Vec<usize>]) -> Vec<Vec<usize>> {
     let dm = &ch.distance_matrix;
     let mut to_insert: Vec<usize> = removed.to_vec();
     let mut route_loads: Vec<i32> = routes.iter()
         .map(|r| r.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum()).collect();
 
     while !to_insert.is_empty() {
+        let mut cust_route = vec![usize::MAX; ch.num_nodes];
+        for (ri, route) in routes.iter().enumerate() {
+            for &node in route.iter() {
+                if node != 0 { cust_route[node] = ri; }
+            }
+        }
+
         let mut best_cost = i32::MAX;
         let mut best_ci = 0;
         let mut best_ri = 0;
         let mut best_pos = 0;
 
         for (ci, &cust) in to_insert.iter().enumerate() {
+            let mut cand: Vec<usize> = Vec::new();
+            for &nb in &shaw_nn[cust] {
+                if cust_route[nb] < routes.len() && !cand.contains(&cust_route[nb]) {
+                    cand.push(cust_route[nb]);
+                }
+            }
+            let use_cand = !cand.is_empty();
+
             for (ri, route) in routes.iter().enumerate() {
+                if use_cand && !cand.contains(&ri) { continue; }
                 if route_loads[ri] + ch.demands[cust] > ch.max_capacity { continue; }
                 for pos in 1..route.len() {
                     let cost = dm[route[pos-1]][cust] + dm[cust][route[pos]] - dm[route[pos-1]][route[pos]];
@@ -414,6 +430,25 @@ fn greedy_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challen
                         if is_feasible(&test, ch) {
                             best_cost = cost;
                             best_ci = ci; best_ri = ri; best_pos = pos;
+                        }
+                    }
+                }
+            }
+        }
+
+        if best_cost == i32::MAX {
+            for (ci, &cust) in to_insert.iter().enumerate() {
+                for (ri, route) in routes.iter().enumerate() {
+                    if route_loads[ri] + ch.demands[cust] > ch.max_capacity { continue; }
+                    for pos in 1..route.len() {
+                        let cost = dm[route[pos-1]][cust] + dm[cust][route[pos]] - dm[route[pos-1]][route[pos]];
+                        if cost < best_cost {
+                            let mut test = route.clone();
+                            test.insert(pos, cust);
+                            if is_feasible(&test, ch) {
+                                best_cost = cost;
+                                best_ci = ci; best_ri = ri; best_pos = pos;
+                            }
                         }
                     }
                 }
@@ -433,13 +468,20 @@ fn greedy_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challen
     routes
 }
 
-fn regret_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challenge) -> Vec<Vec<usize>> {
+fn regret_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challenge, shaw_nn: &[Vec<usize>]) -> Vec<Vec<usize>> {
     let dm = &ch.distance_matrix;
     let mut to_insert: Vec<usize> = removed.to_vec();
     let mut route_loads: Vec<i32> = routes.iter()
         .map(|r| r.iter().filter(|&&x| x != 0).map(|&x| ch.demands[x]).sum()).collect();
 
     while !to_insert.is_empty() {
+        let mut cust_route = vec![usize::MAX; ch.num_nodes];
+        for (ri, route) in routes.iter().enumerate() {
+            for &node in route.iter() {
+                if node != 0 { cust_route[node] = ri; }
+            }
+        }
+
         let mut best_regret = i64::MIN;
         let mut best_ci = 0;
         let mut best_ri = 0;
@@ -447,9 +489,18 @@ fn regret_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challen
         let mut best_is_new = false;
 
         for (ci, &cust) in to_insert.iter().enumerate() {
+            let mut cand: Vec<usize> = Vec::new();
+            for &nb in &shaw_nn[cust] {
+                if cust_route[nb] < routes.len() && !cand.contains(&cust_route[nb]) {
+                    cand.push(cust_route[nb]);
+                }
+            }
+            let use_cand = !cand.is_empty();
+
             let mut route_bests: Vec<(i32, usize, usize)> = Vec::new();
 
             for (ri, route) in routes.iter().enumerate() {
+                if use_cand && !cand.contains(&ri) { continue; }
                 if route_loads[ri] + ch.demands[cust] > ch.max_capacity { continue; }
 
                 let mut best_in_route = i32::MAX;
@@ -470,6 +521,30 @@ fn regret_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challen
                 }
             }
 
+            if route_bests.is_empty() && use_cand {
+                for (ri, route) in routes.iter().enumerate() {
+                    if cand.contains(&ri) { continue; }
+                    if route_loads[ri] + ch.demands[cust] > ch.max_capacity { continue; }
+
+                    let mut best_in_route = i32::MAX;
+                    let mut best_pos_in_route = 1;
+                    for pos in 1..route.len() {
+                        let cost = dm[route[pos-1]][cust] + dm[cust][route[pos]] - dm[route[pos-1]][route[pos]];
+                        if cost < best_in_route {
+                            let mut test = route.clone();
+                            test.insert(pos, cust);
+                            if is_feasible(&test, ch) {
+                                best_in_route = cost;
+                                best_pos_in_route = pos;
+                            }
+                        }
+                    }
+                    if best_in_route < i32::MAX {
+                        route_bests.push((best_in_route, ri, best_pos_in_route));
+                    }
+                }
+            }
+
             if route_bests.is_empty() {
                 if (i64::MAX - 1) > best_regret {
                     best_regret = i64::MAX - 1;
@@ -479,8 +554,10 @@ fn regret_insertion(mut routes: Vec<Vec<usize>>, removed: &[usize], ch: &Challen
             }
 
             route_bests.sort_unstable_by_key(|&(c, _, _)| c);
-            let regret = if route_bests.len() >= 2 {
-                (route_bests[1].0 - route_bests[0].0) as i64
+            let regret = if route_bests.len() >= 3 {
+                (route_bests[1].0 - route_bests[0].0) as i64 + (route_bests[2].0 - route_bests[0].0) as i64
+            } else if route_bests.len() >= 2 {
+                2 * (route_bests[1].0 - route_bests[0].0) as i64
             } else {
                 (route_bests[0].0 as i64).abs() + 1000
             };
