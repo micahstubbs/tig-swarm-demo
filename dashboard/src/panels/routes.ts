@@ -41,6 +41,15 @@ function computeRouteDistance(data: RouteData): number {
   return total;
 }
 
+interface HistoryEntry {
+  experiment_id: string;
+  agent_name: string;
+  agent_id?: string;
+  score: number;
+  route_data: AllRouteData;
+  created_at: string;
+}
+
 export class RoutesPanel implements Panel {
   private svg!: any;
   private routeGroup!: any;
@@ -53,6 +62,9 @@ export class RoutesPanel implements Panel {
   private instanceLabelEl!: HTMLElement;
   private navEl!: HTMLElement;
   private agentNameEl!: HTMLElement;
+  private historyNavEl!: HTMLElement;
+  private historyLabelEl!: HTMLElement;
+  private historyLiveBtnEl!: HTMLElement;
 
   private allInstances: AllRouteData = {};
   private currentIndex = 0;
@@ -66,8 +78,23 @@ export class RoutesPanel implements Panel {
   // this divided by numInstances so it matches the leaderboard's avg metric.
   private rawScore: number | null = null;
 
+  // All global bests seen so far, oldest to newest. Seeded from /api/replay
+  // on init and appended to on live `new_global_best` events.  historyIndex
+  // is the entry currently rendered on the SVG — typically the latest
+  // (= "live"), but the user can step back through breakthroughs.
+  private historyEntries: HistoryEntry[] = [];
+  private historyIndex = -1;
+  private apiUrl = "";
+
   private get instanceKeys(): string[] {
     return Object.keys(this.allInstances).sort();
+  }
+
+  private isAtLatest(): boolean {
+    return (
+      this.historyEntries.length === 0 ||
+      this.historyIndex >= this.historyEntries.length - 1
+    );
   }
 
   init(container: HTMLElement) {
@@ -75,6 +102,12 @@ export class RoutesPanel implements Panel {
       <div class="panel-inner routes-panel">
         <div class="panel-label">ROUTES</div>
         <div class="routes-agent-name" id="routes-agent-name"></div>
+        <div class="routes-history-nav" id="routes-history-nav" style="display:none">
+          <button class="routes-nav-btn" id="routes-hist-prev" title="Previous global best">&lsaquo;</button>
+          <span class="routes-history-label" id="routes-history-label"></span>
+          <button class="routes-nav-btn" id="routes-hist-next" title="Next global best">&rsaquo;</button>
+          <button class="routes-history-live" id="routes-hist-live" title="Jump to latest" style="display:none">LIVE &rarr;</button>
+        </div>
         <div class="routes-nav" id="routes-nav" style="display:none">
           <button class="routes-nav-btn" id="routes-prev">&lsaquo;</button>
           <span class="routes-instance-label" id="routes-instance-label"></span>
@@ -103,9 +136,19 @@ export class RoutesPanel implements Panel {
     this.instanceLabelEl = document.getElementById("routes-instance-label")!;
     this.navEl = document.getElementById("routes-nav")!;
     this.agentNameEl = document.getElementById("routes-agent-name")!;
+    this.historyNavEl = document.getElementById("routes-history-nav")!;
+    this.historyLabelEl = document.getElementById("routes-history-label")!;
+    this.historyLiveBtnEl = document.getElementById("routes-hist-live")!;
 
     document.getElementById("routes-prev")!.addEventListener("click", () => this.navigate(-1));
     document.getElementById("routes-next")!.addEventListener("click", () => this.navigate(1));
+    document.getElementById("routes-hist-prev")!.addEventListener("click", () => this.navigateHistory(-1));
+    document.getElementById("routes-hist-next")!.addEventListener("click", () => this.navigateHistory(1));
+    this.historyLiveBtnEl.addEventListener("click", () => {
+      if (!this.historyEntries.length) return;
+      this.historyIndex = this.historyEntries.length - 1;
+      this.applyHistoryEntry();
+    });
 
     this.svg = d3.select("#routes-svg");
     this.svg
@@ -140,6 +183,125 @@ export class RoutesPanel implements Panel {
         this.navigate(1);
       }
     }, 8000);
+
+    // Resolve API base URL (same pattern other panels use).
+    const params = new URLSearchParams(window.location.search);
+    const explicit = params.get("api");
+    if (explicit) this.apiUrl = explicit;
+    else {
+      const ws = params.get("ws") || "";
+      if (ws) {
+        this.apiUrl = ws
+          .replace("ws://", "http://")
+          .replace("wss://", "https://")
+          .replace("/ws/dashboard", "");
+      } else {
+        this.apiUrl = `${window.location.protocol}//${window.location.host}`;
+      }
+    }
+    this.fetchHistory();
+  }
+
+  // Seed historyEntries from /api/replay. Safe to race with WS hydration:
+  // entries are deduped by experiment_id and merged in chronological order.
+  private async fetchHistory() {
+    try {
+      const res = await fetch(`${this.apiUrl}/api/replay`);
+      if (!res.ok) return;
+      const rows: any[] = await res.json();
+      const fetched: HistoryEntry[] = rows
+        .filter((r) => r && r.route_data)
+        .map((r) => ({
+          experiment_id: r.experiment_id,
+          agent_name: r.agent_name,
+          agent_id: r.agent_id,
+          score: r.score,
+          route_data: r.route_data,
+          created_at: r.created_at,
+        }));
+      const existingIds = new Set(this.historyEntries.map((e) => e.experiment_id));
+      const merged = [
+        ...fetched.filter((e) => !existingIds.has(e.experiment_id)),
+        ...this.historyEntries,
+      ];
+      merged.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+      this.historyEntries = merged;
+      const wasAtLatest = this.isAtLatest();
+      if (wasAtLatest && this.historyEntries.length) {
+        this.historyIndex = this.historyEntries.length - 1;
+        this.applyHistoryEntry();
+      }
+      this.updateHistoryLabel();
+    } catch {
+      // network/transport errors are non-fatal — panel works without history
+    }
+  }
+
+  private navigateHistory(delta: number) {
+    if (!this.historyEntries.length) return;
+    const next = Math.max(
+      0,
+      Math.min(this.historyEntries.length - 1, this.historyIndex + delta),
+    );
+    if (next === this.historyIndex) return;
+    this.historyIndex = next;
+    this.applyHistoryEntry();
+  }
+
+  // Render the currently-selected HistoryEntry: swap route_data, redraw,
+  // update score/agent/delta. Safe to call whenever historyIndex changes.
+  private applyHistoryEntry() {
+    const entry = this.historyEntries[this.historyIndex];
+    if (!entry) return;
+
+    this.rawScore = entry.score;
+    this.allInstances = entry.route_data;
+    this.updateViewBox();
+
+    this.agentNameEl.textContent = entry.agent_name;
+    this.agentNameEl.style.color = entry.agent_id
+      ? getAgentColor(entry.agent_id)
+      : "";
+
+    const keys = this.instanceKeys;
+    if (this.currentIndex >= keys.length) this.currentIndex = 0;
+    this.updateInstanceLabel();
+    if (keys.length > 0) {
+      this.showInstance(this.allInstances[keys[this.currentIndex]]);
+    }
+
+    this.scoreEl.textContent = entry.score.toFixed(1);
+    this.updateBksGap(entry.score);
+
+    // Score delta = improvement this entry represented over the previous
+    // historical best. Shown as a negative score change ("-X.XXXXX%") in
+    // green, matching the live-message format.
+    if (this.historyIndex > 0) {
+      const prev = this.historyEntries[this.historyIndex - 1];
+      const pct = prev.score > 0 ? ((prev.score - entry.score) / prev.score) * 100 : 0;
+      const scoreChange = -pct;
+      const sign = scoreChange >= 0 ? "+" : "";
+      this.scoreDeltaEl.textContent = `${sign}${scoreChange.toFixed(5)}% vs prev best`;
+      this.scoreDeltaEl.style.color = "var(--green)";
+    } else {
+      this.scoreDeltaEl.textContent = "first global best";
+      this.scoreDeltaEl.style.color = "var(--text-dim)";
+    }
+
+    this.updateHistoryLabel();
+  }
+
+  private updateHistoryLabel() {
+    const total = this.historyEntries.length;
+    if (total <= 1) {
+      this.historyNavEl.style.display = "none";
+      return;
+    }
+    this.historyNavEl.style.display = "flex";
+    const atLatest = this.isAtLatest();
+    this.historyLiveBtnEl.style.display = atLatest ? "none" : "inline-block";
+    const suffix = atLatest ? " · LATEST" : "";
+    this.historyLabelEl.textContent = `BEST ${this.historyIndex + 1}/${total}${suffix}`;
   }
 
   // Compute a square viewBox that tightly bounds *all* instances' data with a
@@ -210,6 +372,8 @@ export class RoutesPanel implements Panel {
       this.currentIndex = 0;
       this.rawScore = null;
       this.viewSide = 1000;
+      this.historyEntries = [];
+      this.historyIndex = -1;
       this.routeGroup.selectAll("*").remove();
       this.customerGroup.selectAll("*").remove();
       this.depotGroup.selectAll("*").remove();
@@ -220,6 +384,7 @@ export class RoutesPanel implements Panel {
       this.scoreBksEl.style.color = "";
       this.routeDistanceEl.textContent = "---";
       this.navEl.style.display = "none";
+      this.historyNavEl.style.display = "none";
       this.instanceLabelEl.textContent = "";
       this.agentNameEl.textContent = "";
       this.agentNameEl.style.color = "";
@@ -240,38 +405,40 @@ export class RoutesPanel implements Panel {
 
     if (msg.type === "new_global_best" && msg.route_data) {
       if (msg.num_instances) this.numInstances = msg.num_instances;
-      this.rawScore = msg.score;
-      this.allInstances = msg.route_data;
-      this.updateViewBox();
 
-      if (msg.agent_name) {
-        this.agentNameEl.textContent = msg.agent_name;
-        this.agentNameEl.style.color = msg.agent_id
-          ? getAgentColor(msg.agent_id)
-          : "";
-      }
+      const entry: HistoryEntry = {
+        experiment_id: msg.experiment_id,
+        agent_name: msg.agent_name,
+        agent_id: msg.agent_id,
+        score: msg.score,
+        route_data: msg.route_data,
+        created_at: msg.timestamp,
+      };
 
-      const keys = this.instanceKeys;
-      if (this.currentIndex >= keys.length) this.currentIndex = 0;
-
-      this.updateInstanceLabel();
-      this.showInstance(this.allInstances[keys[this.currentIndex]]);
-
-      // Score is already a per-instance average from the server.
-      this.scoreEl.textContent = msg.score.toFixed(1);
-      this.updateBksGap(msg.score);
-
-      // incremental_improvement_pct is improvement-positive. This fires only
-      // on a new best, so the value is positive — which we display as a
-      // negative score change ("-X.XXXXX%") in green.
-      if (msg.incremental_improvement_pct != null) {
-        const scoreChange = -msg.incremental_improvement_pct;
-        const sign = scoreChange >= 0 ? "+" : "";
-        this.scoreDeltaEl.textContent = `${sign}${scoreChange.toFixed(5)}% vs prev best`;
-        this.scoreDeltaEl.style.color = "var(--green)";
+      // Dedupe by experiment_id. The same entry can arrive via several paths:
+      // (a) initial WS hydration, (b) /api/replay fetch, (c) the R-key replay
+      // re-dispatching historical bests. Case (c) is special — the user is
+      // deliberately iterating through history, so if we recognize the entry
+      // we jump to that specific historical index rather than snapping to
+      // latest; that preserves the replay animation.
+      const existingIdx = this.historyEntries.findIndex(
+        (e) => e.experiment_id === entry.experiment_id,
+      );
+      if (existingIdx >= 0) {
+        this.historyEntries[existingIdx] = entry;
+        this.historyIndex = existingIdx;
+        this.applyHistoryEntry();
       } else {
-        this.scoreDeltaEl.textContent = "first global best";
-        this.scoreDeltaEl.style.color = "var(--text-dim)";
+        const wasAtLatest = this.isAtLatest();
+        this.historyEntries.push(entry);
+        if (wasAtLatest) {
+          this.historyIndex = this.historyEntries.length - 1;
+          this.applyHistoryEntry();
+        } else {
+          // User is browsing an older best — don't yank them away. Just
+          // refresh the counter so they know a new entry landed.
+          this.updateHistoryLabel();
+        }
       }
     }
   }
