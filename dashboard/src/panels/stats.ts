@@ -30,7 +30,7 @@ export class StatsPanel implements Panel {
           </div>
           <div class="stat-chip" id="stat-improvement">
             <span class="stat-label">IMPROVEMENT</span>
-            <span class="stat-value" id="stat-improvement-val">0%</span>
+            <span class="stat-value" id="stat-improvement-val" title="No feasible experiment yet">—</span>
           </div>
           <div class="stat-hero" id="stat-hero"></div>
         </div>
@@ -48,8 +48,9 @@ export class StatsPanel implements Panel {
     if (msg.type === "reset") {
       this.agentsEl.textContent = "0";
       this.experimentsEl.textContent = "0";
-      this.improvementEl.textContent = "0%";
+      this.improvementEl.textContent = "—";
       this.improvementEl.style.color = "";
+      this.improvementEl.title = "No feasible experiment yet";
       this.heroEl.textContent = "";
       this.heroEl.style.opacity = "0";
       return;
@@ -63,12 +64,28 @@ export class StatsPanel implements Panel {
       // We display it as a score change: an improvement of 5% shows "-5.0%"
       // in green, a 5% regression shows "+5.0%" in red — the sign tracks the
       // direction of the score, not the direction of improvement.
+      //
+      // There is no meaningful "improvement" until at least two feasible
+      // experiments have landed. Show an em-dash in those cases so a visitor
+      // doesn't mistake 0.0% for "we did a lot of work and made zero
+      // progress" — they're distinct states.
       const impEl = this.improvementEl;
       const target = msg.improvement_pct;
-      const scoreChange = -target;
-      const sign = scoreChange >= 0 ? "+" : "";
-      impEl.textContent = `${sign}${scoreChange.toFixed(1)}%`;
-      impEl.style.color = target > 0 ? "var(--green)" : target < 0 ? "var(--red)" : "";
+      const hasBaseline = msg.baseline_score != null && msg.best_score != null;
+      const hasRoomToMove = hasBaseline && msg.baseline_score !== msg.best_score;
+      if (!hasBaseline || !hasRoomToMove) {
+        impEl.textContent = "—";
+        impEl.style.color = "";
+        impEl.title = !hasBaseline
+          ? "No feasible experiment yet"
+          : "First global best — improvement metric unlocks after the second feasible experiment";
+      } else {
+        const scoreChange = -target;
+        const sign = scoreChange >= 0 ? "+" : "";
+        impEl.textContent = `${sign}${scoreChange.toFixed(1)}%`;
+        impEl.style.color = target > 0 ? "var(--green)" : target < 0 ? "var(--red)" : "";
+        impEl.title = "Score change vs the first feasible experiment";
+      }
     }
 
     if (msg.type === "agent_joined") {
