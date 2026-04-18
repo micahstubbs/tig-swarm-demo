@@ -3,10 +3,13 @@
 
 Usage:
     python3 scripts/benchmark.py 2>/dev/null \
-      | python3 scripts/publish.py AGENT_ID "title" "description" strategy_tag "notes"
+      | python3 scripts/publish.py AGENT_ID AGENT_TOKEN "title" "description" strategy_tag "notes"
+
+AGENT_TOKEN is the credential returned by /api/agents/register.
 """
 
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -16,24 +19,26 @@ ALGO_PATH = Path(__file__).parent.parent / "src/vehicle_routing/algorithm/mod.rs
 
 
 def main():
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 6:
         print(
-            "Usage: python3 scripts/publish.py <agent_id> <title> <description> <strategy_tag> [notes]",
+            "Usage: python3 scripts/publish.py <agent_id> <agent_token> <title> <description> <strategy_tag> [notes]",
             file=sys.stderr,
         )
         sys.exit(1)
 
     agent_id = sys.argv[1]
-    title = sys.argv[2]
-    description = sys.argv[3]
-    strategy_tag = sys.argv[4]
-    notes = sys.argv[5] if len(sys.argv) > 5 else ""
+    agent_token = sys.argv[2]
+    title = sys.argv[3]
+    description = sys.argv[4]
+    strategy_tag = sys.argv[5]
+    notes = sys.argv[6] if len(sys.argv) > 6 else ""
 
     bench = json.load(sys.stdin)
     code = ALGO_PATH.read_text()
 
     payload = {
         "agent_id": agent_id,
+        "agent_token": agent_token,
         "title": title,
         "description": description,
         "strategy_tag": strategy_tag,
