@@ -210,6 +210,7 @@ pub fn solve_challenge(
     current_pen = best_pen;
     let mut sa_temp = (best_pen as f64).abs().max(1000.0) * 0.02;
     let mut route_dists: Vec<i32> = routes.iter().map(|r| route_dist(r, dm)).collect();
+    let mut route_metas: Vec<RouteMeta> = routes.iter().map(|r| RouteMeta::compute(r, challenge)).collect();
     let mut stag = 0u32;
     let mut sa_last_checkpoint = Instant::now();
 
@@ -223,7 +224,7 @@ pub fn solve_challenge(
 
         let result = match op {
             0 => try_two_opt_star(&routes, &route_dists, challenge, &mut rng, dm, fleet, fleet_penalty),
-            1 => try_relocate(&routes, &route_dists, challenge, &mut rng, dm, fleet, fleet_penalty),
+            1 => try_relocate_fast(&routes, &route_dists, &route_metas, challenge, &mut rng, dm, fleet, fleet_penalty),
             2 => try_exchange(&routes, &route_dists, challenge, &mut rng, dm),
             _ => try_or_opt(&routes, challenge, &mut rng),
         };
@@ -234,6 +235,7 @@ pub fn solve_challenge(
                 let d = delta_pen as f64;
                 if d < 0.0 || (sa_temp > 0.1 && (rand_lcg(&mut rng) % 1_000_000) as f64 / 1_000_000.0 < (-d / sa_temp).exp()) {
                     apply(&mut routes, &mut route_dists);
+                    route_metas = routes.iter().map(|r| RouteMeta::compute(r, challenge)).collect();
                     current_pen += delta_pen;
                     if current_pen < best_pen {
                         best_pen = current_pen;
@@ -249,6 +251,7 @@ pub fn solve_challenge(
                 if d < 0.0 || (sa_temp > 0.1 && (rand_lcg(&mut rng) % 1_000_000) as f64 / 1_000_000.0 < (-d / sa_temp).exp()) {
                     route_dists = new_routes.iter().map(|r| route_dist(r, dm)).collect();
                     routes = new_routes;
+                    route_metas = routes.iter().map(|r| RouteMeta::compute(r, challenge)).collect();
                     current_pen = new_pen;
                     if current_pen < best_pen {
                         best_pen = current_pen;
@@ -272,6 +275,7 @@ pub fn solve_challenge(
             routes = best_routes.clone();
             current_pen = best_pen;
             route_dists = routes.iter().map(|r| route_dist(r, dm)).collect();
+            route_metas = routes.iter().map(|r| RouteMeta::compute(r, challenge)).collect();
             stag = 0;
         }
     }
@@ -900,4 +904,289 @@ fn route_dist(route: &[usize], dm: &[Vec<i32>]) -> i32 {
 
 fn total_distance(routes: &[Vec<usize>], dm: &[Vec<i32>]) -> i64 {
     routes.iter().map(|r| route_dist(r, dm) as i64).sum()
+}
+
+// ---- Route metadata for O(1) move evaluation ----
+
+struct RouteMeta {
+    load: i32,
+    dist: i32,
+    earliest_depart: Vec<i32>,
+    latest_arrive: Vec<i32>,
+}
+
+impl RouteMeta {
+    fn compute(route: &[usize], ch: &Challenge) -> Self {
+        let dm = &ch.distance_matrix;
+        let n = route.len();
+        let mut load = 0i32;
+        let dist = route_dist(route, dm);
+
+        let mut earliest_depart = vec![0i32; n];
+        for i in 1..n {
+            let prev = route[i - 1];
+            let curr = route[i];
+            let arrive = earliest_depart[i - 1] + dm[prev][curr];
+            if curr == 0 {
+                earliest_depart[i] = arrive;
+            } else {
+                earliest_depart[i] = arrive.max(ch.ready_times[curr]) + ch.service_time;
+                load += ch.demands[curr];
+            }
+        }
+
+        let mut latest_arrive = vec![i32::MAX; n];
+        if n > 0 {
+            latest_arrive[n - 1] = ch.due_times[0];
+        }
+        for i in (1..n.saturating_sub(1)).rev() {
+            let curr = route[i];
+            let next = route[i + 1];
+            let from_downstream = latest_arrive[i + 1] - ch.service_time - dm[curr][next];
+            latest_arrive[i] = from_downstream.min(ch.due_times[curr]);
+        }
+
+        Self { load, dist, earliest_depart, latest_arrive }
+    }
+
+    fn check_removal_feasible(&self, route: &[usize], pos: usize, dm: &[Vec<i32>]) -> bool {
+        debug_assert!(pos >= 1 && pos < route.len() - 1);
+        if route.len() <= 3 { return true; }
+        let prev = route[pos - 1];
+        let next = route[pos + 1];
+        self.earliest_depart[pos - 1] + dm[prev][next] <= self.latest_arrive[pos + 1]
+    }
+
+    fn check_insertion_feasible(
+        &self, route: &[usize], ins_pos: usize, cust: usize, ch: &Challenge,
+    ) -> bool {
+        let dm = &ch.distance_matrix;
+        debug_assert!(ins_pos >= 1 && ins_pos < route.len());
+        let prev = route[ins_pos - 1];
+        let arrive_cust = self.earliest_depart[ins_pos - 1] + dm[prev][cust];
+        if arrive_cust > ch.due_times[cust] { return false; }
+        let depart_cust = arrive_cust.max(ch.ready_times[cust]) + ch.service_time;
+        let new_arrive_next = depart_cust + dm[cust][route[ins_pos]];
+        new_arrive_next <= self.latest_arrive[ins_pos]
+    }
+}
+
+fn try_relocate_fast(
+    routes: &[Vec<usize>], rd: &[i32], metas: &[RouteMeta],
+    ch: &Challenge, rng: &mut u64, dm: &[Vec<i32>], fleet: usize, fp: i64,
+) -> SaResult {
+    if routes.len() < 2 { return SaResult::Failed; }
+    let src = (rand_lcg(rng) as usize) % routes.len();
+    if routes[src].len() <= 2 { return SaResult::Failed; }
+    let pos = 1 + (rand_lcg(rng) as usize) % (routes[src].len() - 2);
+    let cust = routes[src][pos];
+    let dst = loop { let d = (rand_lcg(rng) as usize) % routes.len(); if d != src { break d; } };
+
+    if metas[dst].load + ch.demands[cust] > ch.max_capacity { return SaResult::Failed; }
+
+    let mut bi = 1; let mut bc = i32::MAX;
+    for ins in 1..routes[dst].len() {
+        let c = dm[routes[dst][ins-1]][cust] + dm[cust][routes[dst][ins]] - dm[routes[dst][ins-1]][routes[dst][ins]];
+        if c < bc { bc = c; bi = ins; }
+    }
+
+    if !metas[src].check_removal_feasible(&routes[src], pos, dm) { return SaResult::Failed; }
+    if !metas[dst].check_insertion_feasible(&routes[dst], bi, cust, ch) { return SaResult::Failed; }
+
+    #[cfg(debug_assertions)]
+    {
+        let mut ns_dbg = routes[src].clone(); ns_dbg.remove(pos);
+        let removal_ok = ns_dbg.len() <= 2 || is_feasible(&ns_dbg, ch);
+        debug_assert!(removal_ok,
+            "RouteMeta removal false positive: route {:?}, pos {}", &routes[src], pos);
+        let mut nd_dbg = routes[dst].clone(); nd_dbg.insert(bi, cust);
+        let insertion_ok = is_feasible(&nd_dbg, ch);
+        debug_assert!(insertion_ok,
+            "RouteMeta insertion false positive: route {:?}, cust {}, pos {}", &routes[dst], cust, bi);
+    }
+
+    let prev_s = routes[src][pos - 1];
+    let next_s = routes[src][pos + 1];
+    let nsd = if routes[src].len() <= 3 { 0 } else {
+        rd[src] - dm[prev_s][cust] - dm[cust][next_s] + dm[prev_s][next_s]
+    };
+    let ndd = rd[dst] + bc;
+
+    let mut dp = nsd as i64 + ndd as i64 - rd[src] as i64 - rd[dst] as i64;
+    if routes[src].len() <= 3 && routes.len() > fleet { dp -= fp; }
+
+    let mut ns = routes[src].clone(); ns.remove(pos);
+    let mut nd = routes[dst].clone(); nd.insert(bi, cust);
+
+    SaResult::Delta {
+        delta_pen: dp,
+        apply: Box::new(move |rs: &mut Vec<Vec<usize>>, ds: &mut Vec<i32>| {
+            rs[src] = ns; ds[src] = nsd; rs[dst] = nd; ds[dst] = ndd;
+            let mut i = 0;
+            while i < rs.len() { if rs[i].len() <= 2 { rs.remove(i); ds.remove(i); } else { i += 1; } }
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_challenge(
+        positions: Vec<(i32, i32)>, demands: Vec<i32>,
+        ready: Vec<i32>, due: Vec<i32>,
+        capacity: i32, fleet: usize, service: i32,
+    ) -> Challenge {
+        let n = positions.len();
+        let dm: Vec<Vec<i32>> = positions.iter().map(|&a|
+            positions.iter().map(|&b| {
+                let dx = (a.0 - b.0) as f64;
+                let dy = (a.1 - b.1) as f64;
+                dx.hypot(dy).round() as i32
+            }).collect()
+        ).collect();
+        Challenge {
+            seed: [0u8; 32], num_nodes: n, demands, node_positions: positions,
+            distance_matrix: dm, max_capacity: capacity, fleet_size: fleet,
+            service_time: service, ready_times: ready, due_times: due,
+        }
+    }
+
+    #[test]
+    fn route_meta_forward_matches_is_feasible() {
+        let ch = make_challenge(
+            vec![(0,0), (10,0), (20,0), (30,0)],
+            vec![0, 5, 5, 5], vec![0, 0, 0, 0], vec![1000, 100, 200, 300],
+            200, 2, 10,
+        );
+        let route = vec![0, 1, 2, 3, 0];
+        assert!(is_feasible(&route, &ch));
+        let meta = RouteMeta::compute(&route, &ch);
+        assert_eq!(meta.load, 15);
+        assert_eq!(meta.dist, route_dist(&route, &ch.distance_matrix));
+        assert_eq!(meta.earliest_depart[0], 0);
+        assert_eq!(meta.earliest_depart[1], 10 + 10); // arrive 10, ready 0, +service 10
+    }
+
+    #[test]
+    fn route_meta_removal_agrees_with_is_feasible() {
+        let ch = make_challenge(
+            vec![(0,0), (10,0), (20,0), (30,0), (15,15)],
+            vec![0, 5, 5, 5, 5], vec![0, 0, 0, 0, 0], vec![1000, 100, 200, 300, 200],
+            200, 2, 10,
+        );
+        let route = vec![0, 1, 2, 3, 0];
+        let meta = RouteMeta::compute(&route, &ch);
+        let dm = &ch.distance_matrix;
+
+        for pos in 1..route.len()-1 {
+            let fast = meta.check_removal_feasible(&route, pos, dm);
+            let mut removed = route.clone(); removed.remove(pos);
+            let slow = removed.len() <= 2 || is_feasible(&removed, &ch);
+            assert_eq!(fast, slow, "Removal mismatch at pos {} (cust {})", pos, route[pos]);
+        }
+    }
+
+    #[test]
+    fn route_meta_insertion_agrees_with_is_feasible() {
+        let ch = make_challenge(
+            vec![(0,0), (10,0), (20,0), (30,0), (15,15)],
+            vec![0, 5, 5, 5, 5], vec![0, 0, 0, 0, 0], vec![1000, 100, 200, 300, 200],
+            200, 2, 10,
+        );
+        let route = vec![0, 1, 3, 0]; // missing customer 2 and 4
+        let meta = RouteMeta::compute(&route, &ch);
+
+        for &cust in &[2usize, 4] {
+            for ins in 1..route.len() {
+                let fast = meta.check_insertion_feasible(&route, ins, cust, &ch);
+                let mut inserted = route.clone(); inserted.insert(ins, cust);
+                let slow = is_feasible(&inserted, &ch);
+                assert_eq!(fast, slow,
+                    "Insertion mismatch: cust {} at pos {} (fast={}, slow={})", cust, ins, fast, slow);
+            }
+        }
+    }
+
+    #[test]
+    fn route_meta_tight_time_windows() {
+        let ch = make_challenge(
+            vec![(0,0), (10,0), (20,0), (30,0)],
+            vec![0, 3, 3, 3],
+            vec![0, 8, 25, 45],  // tight ready times
+            vec![500, 15, 35, 55], // tight due times
+            100, 2, 10,
+        );
+        let route = vec![0, 1, 2, 3, 0];
+        assert!(is_feasible(&route, &ch));
+        let meta = RouteMeta::compute(&route, &ch);
+        let dm = &ch.distance_matrix;
+
+        for pos in 1..route.len()-1 {
+            let fast = meta.check_removal_feasible(&route, pos, dm);
+            let mut removed = route.clone(); removed.remove(pos);
+            let slow = removed.len() <= 2 || is_feasible(&removed, &ch);
+            assert_eq!(fast, slow, "Tight TW removal mismatch at pos {}", pos);
+        }
+
+        let base = vec![0, 1, 0];
+        let meta_base = RouteMeta::compute(&base, &ch);
+        for &cust in &[2usize, 3] {
+            for ins in 1..base.len() {
+                let fast = meta_base.check_insertion_feasible(&base, ins, cust, &ch);
+                let mut inserted = base.clone(); inserted.insert(ins, cust);
+                let slow = is_feasible(&inserted, &ch);
+                assert_eq!(fast, slow,
+                    "Tight TW insertion mismatch: cust {} at pos {}", cust, ins);
+            }
+        }
+    }
+
+    #[test]
+    fn route_meta_insertion_due_time_violation() {
+        let ch = make_challenge(
+            vec![(0,0), (100,0), (200,0)],
+            vec![0, 5, 5], vec![0, 0, 0], vec![500, 50, 300],
+            100, 2, 10,
+        );
+        // Customer 1 has due_time=50 but is at distance 100 from depot → infeasible to insert
+        let route = vec![0, 2, 0];
+        let meta = RouteMeta::compute(&route, &ch);
+        let fast = meta.check_insertion_feasible(&route, 1, 1, &ch);
+        let mut test = route.clone(); test.insert(1, 1);
+        let slow = is_feasible(&test, &ch);
+        assert_eq!(fast, slow);
+        assert!(!fast); // distance 100 > due_time 50
+    }
+
+    #[test]
+    fn relocate_fast_distance_matches_full_recompute() {
+        let ch = make_challenge(
+            vec![(0,0), (10,0), (20,0), (30,0), (10,10), (20,10)],
+            vec![0, 5, 5, 5, 5, 5], vec![0, 0, 0, 0, 0, 0],
+            vec![1000, 200, 200, 200, 200, 200],
+            100, 2, 10,
+        );
+        let dm = &ch.distance_matrix;
+        let routes = vec![vec![0, 1, 2, 3, 0], vec![0, 4, 5, 0]];
+        let rd: Vec<i32> = routes.iter().map(|r| route_dist(r, dm)).collect();
+        let metas: Vec<RouteMeta> = routes.iter().map(|r| RouteMeta::compute(r, &ch)).collect();
+
+        // Manually relocate: move customer 2 from route 0 to route 1
+        let src = 0; let pos = 2; let cust = 2;
+        let dst = 1; let bi = 2; // insert between 4 and 5
+
+        let prev_s = routes[src][pos-1]; let next_s = routes[src][pos+1];
+        let analytical_nsd = rd[src] - dm[prev_s][cust] - dm[cust][next_s] + dm[prev_s][next_s];
+        let bc = dm[routes[dst][bi-1]][cust] + dm[cust][routes[dst][bi]] - dm[routes[dst][bi-1]][routes[dst][bi]];
+        let analytical_ndd = rd[dst] + bc;
+
+        let mut ns = routes[src].clone(); ns.remove(pos);
+        let mut nd = routes[dst].clone(); nd.insert(bi, cust);
+        let actual_nsd = route_dist(&ns, dm);
+        let actual_ndd = route_dist(&nd, dm);
+
+        assert_eq!(analytical_nsd, actual_nsd, "Source distance mismatch");
+        assert_eq!(analytical_ndd, actual_ndd, "Dest distance mismatch");
+    }
 }
