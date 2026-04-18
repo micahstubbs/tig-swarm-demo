@@ -16,3 +16,4 @@ server/static/
 .bv/
 docs/security-audit-pages/
 docs/reports/*-pages/
+server/.venv/

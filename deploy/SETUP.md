@@ -1,5 +1,13 @@
 # tig-swarm-demo systemd setup
 
+## 0. Install Python dependencies in a venv
+
+```bash
+cd server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
+The systemd unit references `server/.venv/bin/uvicorn` directly.
+
 ## 1. Create the environment file (requires sudo)
 
 Generate an admin key and write the env file:
