@@ -99,6 +99,16 @@ async def get_agent_name(conn, agent_id: str) -> str:
     return row["name"] if row else "unknown"
 
 
+async def update_agent_aliases(conn, agent_id: str, aliases: list[str] | None) -> None:
+    if not aliases:
+        return
+    normalized = sorted({alias.strip() for alias in aliases if alias and alias.strip()})
+    await conn.execute(
+        "UPDATE agents SET aliases_json = ? WHERE id = ?",
+        (json.dumps(normalized), agent_id),
+    )
+
+
 # ── WebSocket manager ──
 
 class ConnectionManager:
@@ -484,6 +494,7 @@ async def create_iteration(req: IterationCreate):
 
     async with db.connect() as conn:
         await verify_agent(conn, req.agent_id, req.agent_token)
+        await update_agent_aliases(conn, req.agent_id, req.agent_aliases)
         await conn.execute("BEGIN IMMEDIATE")
 
         prev_best = await db.get_global_best(conn)
@@ -734,6 +745,7 @@ async def create_experiment(req: ExperimentCreate):
 
     async with db.connect() as conn:
         await verify_agent(conn, req.agent_id, req.agent_token)
+        await update_agent_aliases(conn, req.agent_id, req.agent_aliases)
         # Take the SQLite write lock up front (BEGIN IMMEDIATE) so the
         # read→decide→write block below runs atomically with respect to
         # concurrent publishes. Without this, two agents can both read the

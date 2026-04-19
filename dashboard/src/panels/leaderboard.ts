@@ -130,12 +130,18 @@ export class LeaderboardPanel implements Panel {
          (goodDir === "desc" && (sortVal as number) > prev));
 
       const scoreText = entry.best_score === null ? "—" : entry.best_score.toFixed(1);
+      const aliasText = entry.agent_aliases?.length
+        ? `<span class="lb-aliases">${entry.agent_aliases.join(" · ")}</span>`
+        : "";
 
       row.innerHTML = `
         <span class="lb-rank">${rank}</span>
         <span class="lb-name">
           <span class="lb-dot" style="background:${color}"></span>
-          ${entry.agent_name}
+          <span class="lb-name-text">
+            <span class="lb-primary-name">${entry.agent_name}</span>
+            ${aliasText}
+          </span>
         </span>
         <span class="lb-runs">${entry.runs}</span>
         <span class="lb-imp">${entry.improvements}</span>

@@ -69,6 +69,16 @@ class ExperimentCreate(BaseModel):
     notes: str = Field(default="", max_length=2000)
     route_data: Optional[dict] = None
     agent_token: Optional[str] = Field(default=None, max_length=100)
+    agent_aliases: list[str] = Field(default_factory=list, max_length=16)
+
+    @field_validator("agent_aliases", mode="before")
+    @classmethod
+    def sanitize_aliases(cls, v):
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            return []
+        return [_strip_html(str(item)) for item in v if str(item).strip()]
 
 
 class IterationCreate(BaseModel):
@@ -93,6 +103,16 @@ class IterationCreate(BaseModel):
     notes: str = Field(default="", max_length=2000)
     route_data: Optional[dict] = None
     agent_token: Optional[str] = Field(default=None, max_length=100)
+    agent_aliases: list[str] = Field(default_factory=list, max_length=16)
+
+    @field_validator("agent_aliases", mode="before")
+    @classmethod
+    def sanitize_aliases(cls, v):
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            return []
+        return [_strip_html(str(item)) for item in v if str(item).strip()]
 
 
 class AdminAuth(BaseModel):

@@ -21,6 +21,7 @@ export interface LeaderboardEntry {
   rank: number;
   agent_id: string;
   agent_name: string;
+  agent_aliases?: string[];
   runs: number;
   improvements: number;
   runs_since_improvement: number;

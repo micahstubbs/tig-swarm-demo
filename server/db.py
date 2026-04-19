@@ -1,5 +1,6 @@
 import aiosqlite
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 
 import os
@@ -17,7 +18,8 @@ CREATE TABLE IF NOT EXISTS agents (
     experiments_completed INTEGER DEFAULT 0,
     best_score REAL,
     runs_since_improvement INTEGER DEFAULT 0,
-    improvements INTEGER DEFAULT 0
+    improvements INTEGER DEFAULT 0,
+    aliases_json TEXT DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS hypotheses (
@@ -129,6 +131,7 @@ async def init_db() -> None:
         for stmt in (
             "ALTER TABLE agents ADD COLUMN runs_since_improvement INTEGER DEFAULT 0",
             "ALTER TABLE agents ADD COLUMN improvements INTEGER DEFAULT 0",
+            "ALTER TABLE agents ADD COLUMN aliases_json TEXT DEFAULT '[]'",
             "ALTER TABLE hypotheses ADD COLUMN target_best_experiment_id TEXT",
             "ALTER TABLE best_history ADD COLUMN agent_id TEXT",
             "ALTER TABLE experiments ADD COLUMN delta_vs_best_pct REAL",
@@ -328,6 +331,7 @@ async def compute_leaderboard(
             a.improvements as improvements,
             a.runs_since_improvement as runs_since_improvement,
             a.last_heartbeat as last_heartbeat,
+            a.aliases_json as aliases_json,
             ab.score as best_score
         FROM agents a
         LEFT JOIN agent_bests ab ON ab.agent_id = a.id AND ab.feasible = 1
@@ -335,16 +339,28 @@ async def compute_leaderboard(
         """
     )
     rows = await cursor.fetchall()
-    return [
-        {
-            "rank": i + 1,
-            "agent_id": row["agent_id"],
-            "agent_name": row["agent_name"],
-            "runs": row["runs"],
-            "improvements": row["improvements"],
-            "runs_since_improvement": row["runs_since_improvement"],
-            "best_score": row["best_score"],
-            "active": row["last_heartbeat"] >= inactive_cutoff if inactive_cutoff and row["last_heartbeat"] else False,
-        }
-        for i, row in enumerate(rows)
-    ]
+    entries = []
+    for i, row in enumerate(rows):
+        aliases = []
+        raw_aliases = row["aliases_json"]
+        if raw_aliases:
+            try:
+                parsed = json.loads(raw_aliases)
+                if isinstance(parsed, list):
+                    aliases = [str(alias) for alias in parsed if str(alias).strip()]
+            except Exception:
+                aliases = []
+        entries.append(
+            {
+                "rank": i + 1,
+                "agent_id": row["agent_id"],
+                "agent_name": row["agent_name"],
+                "agent_aliases": aliases,
+                "runs": row["runs"],
+                "improvements": row["improvements"],
+                "runs_since_improvement": row["runs_since_improvement"],
+                "best_score": row["best_score"],
+                "active": row["last_heartbeat"] >= inactive_cutoff if inactive_cutoff and row["last_heartbeat"] else False,
+            }
+        )
+    return entries
