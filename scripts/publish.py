@@ -21,6 +21,29 @@ import tig_client as tc
 ALGO_PATH = Path(__file__).resolve().parent.parent / "src/vehicle_routing/algorithm/mod.rs"
 
 
+def host_tag(host: str) -> str:
+    h = host.replace("https://", "").replace("http://", "").rstrip("/")
+    return {
+        "127.0.0.1:8090": "tig",
+        "localhost:8090": "tig",
+        "tigswarmdemo.com": "tig",
+        "demo.discoveryatscale.com": "das",
+    }.get(h, h.split(".")[0])
+
+
+def aliases_for_target(target_host: str) -> list[str]:
+    cfg = tc.load_hosts()
+    aliases: list[str] = []
+    for host, cred in (cfg.get("credentials") or {}).items():
+        if host == target_host:
+            continue
+        agent_name = (cred or {}).get("agent_name")
+        if not agent_name:
+            continue
+        aliases.append(f"{agent_name}@{host_tag(host)}")
+    return sorted(set(aliases))
+
+
 def main():
     if len(sys.argv) < 4:
         print(
@@ -69,7 +92,11 @@ def main():
 
         payload = dict(shared)
         payload["agent_id"]    = creds["agent_id"]
-        payload["agent_token"] = creds["agent_token"]
+        if creds.get("agent_token"):
+            payload["agent_token"] = creds["agent_token"]
+        aliases = aliases_for_target(host)
+        if aliases:
+            payload["agent_aliases"] = aliases
 
         try:
             result = tc.post(host, "/api/iterations", payload)

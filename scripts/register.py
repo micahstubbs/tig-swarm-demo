@@ -30,7 +30,8 @@ def main():
             cfg["credentials"][host] = {
                 "agent_id":    resp["agent_id"],
                 "agent_name":  resp["agent_name"],
-                "agent_token": resp["agent_token"],
+                # Legacy hosts do not return agent_token; newer hosts do.
+                "agent_token": resp.get("agent_token"),
             }
             print(f"[ok]   {host}: {resp['agent_name']} ({resp['agent_id']})")
         except Exception as e:
